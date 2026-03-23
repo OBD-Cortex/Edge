@@ -9,7 +9,7 @@ import logging
 # CONFIG
 # ==============================
 REQUEST_ID = 0x7D0
-RESPONSE_ID = 0x7D8
+RESPONSE_ID = 0x7D8 # if its not response try 0x7D9 or 0x7DA
 
 # Example requests
 OBD_RPM = bytes([0x01, 0x0C])
