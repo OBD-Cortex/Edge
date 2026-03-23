@@ -2,24 +2,41 @@
 import os
 import time
 import can
+import isotp
 import logging
 
-# Configure Logging
+# ==============================
+# CONFIG
+# ==============================
+REQUEST_ID = 0x7D0
+RESPONSE_ID = 0x7D8
+
+# Example requests
+OBD_RPM = bytes([0x01, 0x0C])
+OBD_VIN = bytes([0x09, 0x02])
+OBD_DTC = bytes([0x03])
+
+# ==============================
+# LOGGING
+# ==============================
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [OBD-CORTEX] - %(levelname)s - %(message)s'
 )
 
+# ==============================
+# SETUP CAN
+# ==============================
 def setup_can_interface():
-    """Configures the hardware in Loopback Mode."""
     logging.info("CONFIG: Initializing MCP2515 hardware...")
-    
-    # Reset and configure interface
+
     os.system("sudo ip link set can0 down")
     time.sleep(1)
-    # Loopback ON allows you to see what you send from the terminal
-    exit_code = os.system("sudo ip link set can0 up type can bitrate 500000 loopback on")
-    
+
+    exit_code = os.system(
+        "sudo ip link set can0 up type can bitrate 500000"
+    )
+
     if exit_code == 0:
         logging.info("SUCCESS: can0 interface is UP.")
         return True
@@ -27,47 +44,142 @@ def setup_can_interface():
         logging.error("FAILURE: Could not setup can0.")
         return False
 
-def wait_for_manual_trigger():
-    """Waits indefinitely for a specific CAN message from the terminal."""
-    logging.info("TEST: System ready. Waiting for manual trigger...")
-    logging.info("ACTION: Open a new terminal and run: cansend can0 123#DEADBEEF")
+
+# ==============================
+# CREATE ISO-TP STACK
+# ==============================
+def create_isotp_stack(bus):
+    addr = isotp.Address(
+        isotp.AddressingMode.Normal_11bits,
+        txid=REQUEST_ID,
+        rxid=RESPONSE_ID
+    )
+
+    stack = isotp.CanStack(
+        bus=bus,
+        address=addr,
+        params={
+            'stmin': 0,
+            'blocksize': 8,
+            'wftmax': 0,
+            'll_data_length': 8,
+            'tx_padding': 0x00
+        }
+    )
+
+    return stack
+
+
+# ==============================
+# SEND + RECEIVE ISO-TP
+# ==============================
+def send_and_receive(stack, request, timeout=2):
+    logging.info(f"SENT (ISO-TP): {request.hex().upper()}")
+
+    stack.send(request)
+
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        stack.process()  # 🔥 VERY IMPORTANT
+
+        if stack.available():
+            response = stack.recv()
+            logging.info(f"RECEIVED (ISO-TP): {response.hex().upper()}")
+            return response
+
+        time.sleep(0.01)
+
+    logging.warning("No response received")
+    return None
+
+
+# ==============================
+# DECODERS
+# ==============================
+def decode_rpm(data):
+    if len(data) >= 4:
+        A = data[2]
+        B = data[3]
+        return ((A * 256) + B) / 4
+    return None
+
+
+def decode_vin(data):
+    try:
+        vin = ''.join(chr(b) for b in data[3:])
+        return vin
+    except:
+        return None
+
+
+def decode_dtc(data):
+    dtcs = []
+    for i in range(1, len(data), 2):
+        if i+1 >= len(data):
+            break
+
+        b1 = data[i]
+        b2 = data[i+1]
+
+        if b1 == 0 and b2 == 0:
+            continue
+
+        first = ['P', 'C', 'B', 'U'][b1 >> 6]
+        code = f"{first}{(b1>>4)&3}{b1&0xF}{b2>>4}{b2&0xF}"
+        dtcs.append(code)
+
+    return dtcs
+
+
+# ==============================
+# MAIN LOOP
+# ==============================
+def run_obd():
+    logging.info("OBD: Starting ISO-TP communication...")
 
     try:
-        # The 'with' block handles the connection cleanup automatically
         with can.interface.Bus(channel='can0', interface='socketcan') as bus:
+
+            stack = create_isotp_stack(bus)
+
             while True:
-                # Wait 1 second for a message, then loop
-                msg = bus.recv(1.0) 
-                
-                if msg is None:
-                    continue # No message yet, keep waiting...
+                # 🔹 RPM
+                resp = send_and_receive(stack, OBD_RPM)
+                if resp:
+                    rpm = decode_rpm(resp)
+                    if rpm:
+                        logging.info(f"DECODED: RPM = {rpm}")
 
-                # Log what we received
-                logging.info(f"RECEIVED: ID={hex(msg.arbitration_id)} Data={msg.data.hex().upper()}")
+                # 🔹 VIN (multi-frame example)
+                resp = send_and_receive(stack, OBD_VIN)
+                if resp:
+                    vin = decode_vin(resp)
+                    if vin:
+                        logging.info(f"DECODED: VIN = {vin}")
 
-                # Check if it matches our "Secret Handshake"
-                if msg.arbitration_id == 0x123 and msg.data.hex().upper() == "DEADBEEF":
-                    logging.info("PASSED: Manual test confirmed!")
-                    return True
+                # 🔹 DTCs
+                resp = send_and_receive(stack, OBD_DTC)
+                if resp:
+                    dtcs = decode_dtc(resp)
+                    if dtcs:
+                        logging.info(f"DECODED: DTCs = {dtcs}")
+
+                time.sleep(3)
 
     except Exception as e:
         logging.error(f"ERROR: {e}")
-        return False
 
+
+# ==============================
+# MAIN
+# ==============================
 def main():
-    # Step 1: Hardware Setup
     if not setup_can_interface():
         return
 
-    # Step 2: Wait for YOU to test it
-    if wait_for_manual_trigger():
-        logging.info("--- SYSTEM HEALTHY: GoodBye! ---")
-        
-        # Step 3: Standby Loop (Placeholder for future code)
-        # while True:
-        #     time.sleep(1000) 
-    else:
-        logging.critical("--- SYSTEM FAILED ---")
+    run_obd()
+
 
 if __name__ == "__main__":
     main()
