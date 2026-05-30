@@ -1,6 +1,4 @@
-<<<<<<< HEAD
 # Embedded-Automotive-Edge
-=======
 # Embedded-Automotive-Edge
 ### The IoT Gateway for [OBD-Cortex]
 
@@ -121,7 +119,7 @@ Ensure the service is running (it starts automatically), or run it manually:
 
 ```bash
 # Inside ~/obd-cortex
-./obd-venv/bin/python main.py
+./obd-venv/bin/python src/main.py
 
 ```
 
@@ -150,4 +148,3 @@ journalctl -u obd-cortex.service -f
 > `RECEIVED: ID=0x123 Data=DEADBEEF`
 > `PASSED: Manual test confirmed!`
 > `--- SYSTEM HEALTHY: GoodBye! ---`
->>>>>>> c7f9a8f (Implementing Edge Device)

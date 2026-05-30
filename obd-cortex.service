@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 # CRITICAL: Point directly to the python binary inside your venv folder
-ExecStart=/home/obdpi/obd-cortex/obd-venv/bin/python /home/obdpi/obd-cortex/main.py
+ExecStart=/home/obdpi/obd-cortex/obd-venv/bin/python /home/obdpi/obd-cortex/src/main.py
 
 # Set the working directory so it finds your .env files
 WorkingDirectory=/home/obdpi/obd-cortex

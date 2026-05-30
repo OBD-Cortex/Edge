@@ -7,22 +7,26 @@ Orchestrates CAN bus reading, DTC diagnostics, local buffering, and cloud syncin
 Enforces strict physical vehicle connectivity checks and retries during boot.
 """
 
+import os
 import sys
 import time
 import datetime
-from config import (
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from core.config import (
     MONGO_URI,
     DEVICE_TOKEN,
     SCAN_INTERVAL,
     HEARTBEAT_INTERVAL,
     RECONNECT_COOLDOWN
 )
-from can_interface import init_can_bus, shutdown_can_bus
-from obd_scanner import ping_ecu, read_vin, run_full_scan
-from dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
-from telemetry_buffer import init_buffer, save_to_buffer, flush_to_mongodb
-from cloud_sync import connect_to_mongodb, register_device, decode_vin
-from atlas_whitelist import whitelist_device_ip
+from core.can_interface import init_can_bus, shutdown_can_bus
+from services.obd_scanner import ping_ecu, read_vin, run_full_scan
+from services.dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
+from core.telemetry_buffer import init_buffer, save_to_buffer, flush_to_mongodb
+from services.cloud_sync import connect_to_mongodb, register_device, decode_vin
+from services.atlas_whitelist import whitelist_device_ip
 
 def build_telemetry_document(vin, raw_scan):
     """

@@ -1,6 +1,6 @@
 import time
-from can_interface import send_obd_request, recv_obd_response, send_isotp_flow_control
-from dtc_sanitizer import decode_dtc_bytes
+from core.can_interface import send_obd_request, recv_obd_response, send_isotp_flow_control
+from services.dtc_sanitizer import decode_dtc_bytes
 
 def ping_ecu(bus) -> bool:
     """

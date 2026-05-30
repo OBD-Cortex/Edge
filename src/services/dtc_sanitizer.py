@@ -1,4 +1,4 @@
-from dtc_database import lookup_dtc
+from core.dtc_database import lookup_dtc
 
 def decode_dtc_bytes(b1, b2):
     """

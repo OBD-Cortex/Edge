@@ -4,10 +4,10 @@ import urllib.request
 import json
 import requests
 from requests.auth import HTTPDigestAuth
-from config import ATLAS_PUBLIC_KEY, ATLAS_PRIVATE_KEY, ATLAS_PROJECT_ID
+from core.config import ATLAS_PUBLIC_KEY, ATLAS_PRIVATE_KEY, ATLAS_PROJECT_ID
 
 # Whitelist duration (in hours)
-WHITELIST_DURATION_HOURS = 24
+WHITELIST_DURATION_HOURS = 2
 
 def get_public_ip():
     """Fetches the current public IP of the device."""
@@ -46,7 +46,7 @@ def whitelist_device_ip():
     url = f"https://cloud.mongodb.com/api/atlas/v1.0/groups/{ATLAS_PROJECT_ID}/accessList"
     
     headers = {
-        "Accept": "application/vnd.atlas.2023-01-01+json",
+        "Accept": "application/json",
         "Content-Type": "application/json"
     }
 
@@ -54,7 +54,7 @@ def whitelist_device_ip():
     payload = [{
         "ipAddress": ip,
         "comment": "Auto-generated for OBD-Cortex Gateway",
-        "deleteAfter": expiry_str
+        "deleteAfterDate": expiry_str
     }]
 
     try:
@@ -72,6 +72,9 @@ def whitelist_device_ip():
         elif response.status_code == 409:
             # 409 Conflict: Already exists
             print(f"[✓] Whitelist: IP {ip} is already whitelisted on Atlas.")
+            return True
+        elif response.status_code == 400 and "PERMANENT_ENTITY_CANNOT_BE_MADE_TEMPORARY" in response.text:
+            print(f"[✓] Whitelist: IP {ip} is already whitelisted permanently on Atlas.")
             return True
         else:
             print(f"[!] Whitelist: Atlas API rejected request (Status {response.status_code}): {response.text}")

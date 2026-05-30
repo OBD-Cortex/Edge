@@ -3,7 +3,7 @@ import json
 import sqlite3
 import datetime
 from pathlib import Path
-from config import BASE_DIR
+from core.config import BASE_DIR
 
 SQLITE_DB_PATH = BASE_DIR / "telemetry_buffer.db"
 ARCHIVE_DIR = BASE_DIR / "archive"
