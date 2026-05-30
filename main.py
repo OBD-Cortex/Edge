@@ -22,6 +22,7 @@ from obd_scanner import ping_ecu, read_vin, run_full_scan
 from dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
 from telemetry_buffer import init_buffer, save_to_buffer, flush_to_mongodb
 from cloud_sync import connect_to_mongodb, register_device, decode_vin
+from atlas_whitelist import whitelist_device_ip
 
 def build_telemetry_document(vin, raw_scan):
     """
@@ -61,6 +62,10 @@ def build_telemetry_document(vin, raw_scan):
 
 def main():
     print(f"--- OBD-CORTEX DATA LOGGER ---")
+
+    # 0. Automatically whitelist device IP in MongoDB Atlas (if API keys are provided)
+    whitelist_device_ip()
+
     print(f"Device Token: {DEVICE_TOKEN}")
     print(f"Scan Interval: {SCAN_INTERVAL}s")
     print(f"Heartbeat Interval: {HEARTBEAT_INTERVAL}s")
