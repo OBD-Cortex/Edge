@@ -4,7 +4,7 @@ import sqlite3
 import datetime
 import requests
 from pathlib import Path
-from core.config import BASE_DIR, RAG_API_URL, MOBILE_API_KEY
+from core.config import BASE_DIR, RAG_API_URL, DEVICE_TOKEN
 
 SQLITE_DB_PATH = BASE_DIR / "telemetry_buffer.db"
 ARCHIVE_DIR = BASE_DIR / "archive"
@@ -147,7 +147,7 @@ def flush_to_cloud():
     
     try:
         url = f"{RAG_API_URL}/api/telemetry"
-        headers = {"X-API-Key": MOBILE_API_KEY}
+        headers = {"X-Device-Token": DEVICE_TOKEN}
         
         res = requests.post(url, json=payloads, headers=headers, timeout=10)
         

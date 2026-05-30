@@ -7,7 +7,6 @@ load_dotenv(BASE_DIR / ".env")
 
 # Required configuration
 RAG_API_URL = os.getenv("RAG_API_URL")
-MOBILE_API_KEY = os.getenv("MOBILE_API_KEY")
 DEVICE_TOKEN = os.getenv("DEVICE_TOKEN")
 
 # Optional configuration

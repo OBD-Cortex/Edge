@@ -3,7 +3,7 @@ import datetime
 import urllib.request
 import urllib.parse
 import requests
-from core.config import RAG_API_URL, MOBILE_API_KEY
+from core.config import RAG_API_URL, DEVICE_TOKEN
 
 def decode_vin(vin: str) -> tuple:
     """
@@ -43,15 +43,14 @@ def register_device(device_token, vin, brand, model, year):
     """
     Registers the device with the RAG API, binding it to the vehicle VIN.
     """
-    if not RAG_API_URL or not MOBILE_API_KEY:
-        print("[!] Missing RAG_API_URL or MOBILE_API_KEY.")
+    if not RAG_API_URL or not device_token:
+        print("[!] Missing RAG_API_URL or DEVICE_TOKEN.")
         return False
         
     try:
         url = f"{RAG_API_URL}/api/device/register"
-        headers = {"X-API-Key": MOBILE_API_KEY}
+        headers = {"X-Device-Token": device_token}
         payload = {
-            "device_token": device_token,
             "vin": vin
         }
         res = requests.post(url, json=payload, headers=headers, timeout=5)
