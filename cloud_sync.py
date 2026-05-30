@@ -4,15 +4,13 @@ import urllib.request
 import urllib.parse
 import pymongo
 import certifi
-from config import OFFLINE_MODE
-
 def connect_to_mongodb(uri):
     """
     Establishes connection to MongoDB Atlas or local MongoDB.
     Returns (client, col_telemetry, col_devices) or (None, None, None).
     """
-    if OFFLINE_MODE or not uri:
-        print("[*] Offline mode or missing URI. MongoDB connection skipped.")
+    if not uri:
+        print("[*] Missing URI. MongoDB connection skipped.")
         return None, None, None
 
     try:

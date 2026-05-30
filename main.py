@@ -15,8 +15,7 @@ from config import (
     DEVICE_TOKEN,
     SCAN_INTERVAL,
     HEARTBEAT_INTERVAL,
-    RECONNECT_COOLDOWN,
-    OFFLINE_MODE
+    RECONNECT_COOLDOWN
 )
 from can_interface import init_can_bus, shutdown_can_bus
 from obd_scanner import ping_ecu, read_vin, run_full_scan
@@ -105,16 +104,23 @@ def main():
         sys.exit(1)
 
     # 4. Connect to MongoDB (initial connection)
+    # Exits immediately at boot if connection is unreachable or configuration is missing
+    if not MONGO_URI:
+        print("[!] Error: Required environment variable MONGO_URI is missing.")
+        shutdown_can_bus(bus)
+        sys.exit(1)
+
     mongo_client, col_telemetry, col_devices = connect_to_mongodb(MONGO_URI)
-    if mongo_client is not None:
-        print("[✓] Connected to MongoDB Cloud Database.")
-    else:
-        print("[!] Local offline logging mode active. Telemetry will be buffered in SQLite.")
+    if mongo_client is None:
+        print("[!] Error: Could not connect to MongoDB database at startup. Aborting.")
+        shutdown_can_bus(bus)
+        sys.exit(1)
+
+    print("[✓] Connected to MongoDB Cloud Database.")
 
     # 5. NHTSA Decode vehicle info and register device
     brand, model, year = decode_vin(vin)
-    if col_devices is not None:
-        register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
+    register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
 
     # 6. Core Streaming loop
     last_scan_state = None
@@ -126,7 +132,7 @@ def main():
             current_time = time.time()
             
             # Reconnection logic if MongoDB is offline
-            if mongo_client is None and not OFFLINE_MODE:
+            if mongo_client is None:
                 if current_time - last_reconnect_time > RECONNECT_COOLDOWN:
                     print("🔄 [Database] Attempting background reconnection to MongoDB Atlas...")
                     last_reconnect_time = current_time
