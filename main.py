@@ -4,6 +4,7 @@ Embedded-Automotive-Edge Gateway Logger
 OBD-Cortex IoT Telemetry Streamer for Raspberry Pi 4.
 
 Orchestrates CAN bus reading, DTC diagnostics, local buffering, and cloud syncing.
+Enforces strict physical vehicle connectivity checks and retries during boot.
 """
 
 import sys
@@ -15,38 +16,13 @@ from config import (
     SCAN_INTERVAL,
     HEARTBEAT_INTERVAL,
     RECONNECT_COOLDOWN,
-    TEST_MODE,
     OFFLINE_MODE
 )
 from can_interface import init_can_bus, shutdown_can_bus
-from obd_scanner import read_vin, run_full_scan
+from obd_scanner import ping_ecu, read_vin, run_full_scan
 from dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
 from telemetry_buffer import init_buffer, save_to_buffer, flush_to_mongodb
 from cloud_sync import connect_to_mongodb, register_device, decode_vin
-
-def run_loopback_test(bus, is_simulated):
-    """
-    Original loopback test mechanism. Listens on can0 for '123#DEADBEEF'.
-    """
-    print("TEST: System ready. Waiting for manual trigger...")
-    if is_simulated or not bus:
-        print("[!] ERROR: Loopback test requires a physical SocketCAN 'can0' interface.")
-        sys.exit(1)
-
-    try:
-        while True:
-            msg = bus.recv(timeout=1.0)
-            if msg is None:
-                continue
-
-            if msg.arbitration_id == 0x123 and msg.data.hex().upper() == "DEADBEEF":
-                print(f"\nRECEIVED: ID=0x{msg.arbitration_id:x} Data={msg.data.hex().upper()}")
-                print("PASSED: Manual test confirmed!")
-                print("--- SYSTEM HEALTHY: GoodBye! ---")
-                sys.exit(0)
-    except KeyboardInterrupt:
-        print("\n🛑 Loopback test cancelled.")
-        sys.exit(1)
 
 def build_telemetry_document(vin, raw_scan):
     """
@@ -92,30 +68,55 @@ def main():
     print("Press Ctrl+C to exit.\n")
 
     # 1. Initialize hardware interfaces and local buffer
-    bus, is_simulated = init_can_bus()
+    bus = None
+    try:
+        bus = init_can_bus()
+    except RuntimeError as e:
+        print(f"[!] Hardware error: {e}")
+        sys.exit(1)
+
     init_buffer()
 
-    if TEST_MODE:
-        run_loopback_test(bus, is_simulated)
-        return
+    # 2. ECU Verification / Ping Phase
+    # Retries Service 01 PID 00 up to 5 times (total 10 seconds timeout) to handle boot delay
+    ecu_found = False
+    ping_attempts = 5
+    for attempt in range(1, ping_attempts + 1):
+        if ping_ecu(bus):
+            ecu_found = True
+            break
+        if attempt < ping_attempts:
+            print(f"[!] Vehicle ECU is unresponsive. Waiting 2s before retry {attempt + 1}/{ping_attempts}...")
+            time.sleep(2.0)
 
-    # 2. Connect to MongoDB (initial connection)
+    if not ecu_found:
+        print("[!] Error: Vehicle ECU did not respond. Is the ignition on?")
+        shutdown_can_bus(bus)
+        sys.exit(1)
+
+    # 3. Read Vehicle Identification Number (VIN)
+    # Internally retries up to 3 times
+    try:
+        vin = read_vin(bus)
+        print(f"🚗 VEHICLE VIN IDENTIFIED: {vin}")
+    except RuntimeError as e:
+        print(f"[!] {e}")
+        shutdown_can_bus(bus)
+        sys.exit(1)
+
+    # 4. Connect to MongoDB (initial connection)
     mongo_client, col_telemetry, col_devices = connect_to_mongodb(MONGO_URI)
-    if mongo_client:
+    if mongo_client is not None:
         print("[✓] Connected to MongoDB Cloud Database.")
     else:
         print("[!] Local offline logging mode active. Telemetry will be buffered in SQLite.")
 
-    # 3. Read Vehicle Identification Number (VIN)
-    vin = read_vin(bus, is_simulated)
-    print(f"🚗 VEHICLE VIN IDENTIFIED: {vin}")
-
-    # 4. NHTSA Decode vehicle info and register device
+    # 5. NHTSA Decode vehicle info and register device
     brand, model, year = decode_vin(vin)
-    if mongo_client:
+    if col_devices is not None:
         register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
 
-    # 5. Core Streaming loop
+    # 6. Core Streaming loop
     last_scan_state = None
     last_heartbeat_time = 0.0
     last_reconnect_time = 0.0
@@ -125,17 +126,17 @@ def main():
             current_time = time.time()
             
             # Reconnection logic if MongoDB is offline
-            if not mongo_client and not OFFLINE_MODE:
+            if mongo_client is None and not OFFLINE_MODE:
                 if current_time - last_reconnect_time > RECONNECT_COOLDOWN:
                     print("🔄 [Database] Attempting background reconnection to MongoDB Atlas...")
                     last_reconnect_time = current_time
                     mongo_client, col_telemetry, col_devices = connect_to_mongodb(MONGO_URI)
-                    if mongo_client:
+                    if mongo_client is not None:
                         print("[✓] Reconnection Successful! Cloud database is online.")
                         register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
 
             # A. Run full diagnostic scan
-            raw_scan = run_full_scan(bus, is_simulated)
+            raw_scan = run_full_scan(bus)
 
             # B. Evaluate trigger conditions
             heartbeat_due = (current_time - last_heartbeat_time >= HEARTBEAT_INTERVAL)
@@ -152,7 +153,7 @@ def main():
                 save_to_buffer(telemetry)
 
                 # Attempt to flush the SQLite buffer to MongoDB
-                if mongo_client and col_telemetry:
+                if col_telemetry is not None:
                     flush_to_mongodb(col_telemetry)
                     
                 # Reset timers and state tracking
@@ -166,10 +167,12 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[!] Logger process terminated by user.")
+    except Exception as e:
+        print(f"[!] Critical loop error: {e}")
     finally:
         print("\n--- SHUTTING DOWN OBD-CORTEX LOGGER ---")
         shutdown_can_bus(bus)
-        if mongo_client:
+        if mongo_client is not None:
             try:
                 mongo_client.close()
                 print("[Database] MongoDB connection pool closed.")

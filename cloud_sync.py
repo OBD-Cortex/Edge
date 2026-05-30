@@ -48,19 +48,11 @@ def decode_vin(vin: str) -> tuple:
     """
     Decodes the VIN using the NHTSA vPIC API.
     Returns a tuple of (brand, model, year).
-    If the API call fails or is a simulated VIN, falls back to default values.
+    If the API call fails or is invalid, returns ("Unknown", "Unknown", "Unknown").
     """
-    # Check for simulated or invalid VIN
-    if not vin or len(vin) != 17 or vin.startswith("VIN_"):
-        sim_vehicles = [
-            ("Tesla", "Model 3", "2023"),
-            ("Ford", "F-150", "2021"),
-            ("Toyota", "Corolla", "2022"),
-            ("BMW", "X5", "2019")
-        ]
-        # Use stable hashing for consistent simulation results
-        idx = sum(ord(c) for c in vin) % len(sim_vehicles) if vin else 0
-        return sim_vehicles[idx]
+    if not vin or len(vin) != 17:
+        print(f"[!] Invalid VIN length or structure: {vin}")
+        return "Unknown", "Unknown", "Unknown"
 
     print(f"🔍 Decoding VIN [{vin}] via NHTSA vPIC API...")
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
@@ -76,24 +68,23 @@ def decode_vin(vin: str) -> tuple:
             results = res_data.get("Results", [])
             if results:
                 car_info = results[0]
-                brand = car_info.get("Make", "").strip()
-                model = car_info.get("Model", "").strip()
-                year = car_info.get("ModelYear", "").strip()
-                
-                if brand and model and year:
-                    return brand, model, year
+                brand = car_info.get("Make", "").strip() or "Unknown"
+                model = car_info.get("Model", "").strip() or "Unknown"
+                year = car_info.get("ModelYear", "").strip() or "Unknown"
+                return brand, model, year
     except Exception as e:
         print(f"[!] OBD-II: Failed to decode VIN from API: {e}")
 
-    # Fallback default
-    return "Toyota", "Corolla", "2022"
+    # Fallback to generic metadata
+    return "Unknown", "Unknown", "Unknown"
 
 def register_device(col_devices, device_token, vin, brand, model, year):
     """
     Binds the device token to the vehicle VIN and metadata in the database.
     Preserves 'paired' status if an owner_id exists on the token.
+    Uses 'is not None' for Collection truthiness safety.
     """
-    if not col_devices:
+    if col_devices is None:
         return False
     try:
         device_record = col_devices.find_one({"device_token": device_token})
@@ -124,8 +115,9 @@ def register_device(col_devices, device_token, vin, brand, model, year):
 def upload_telemetry(col_telemetry, snapshot):
     """
     Uploads a single telemetry document directly to MongoDB.
+    Uses 'is not None' for Collection truthiness safety.
     """
-    if not col_telemetry:
+    if col_telemetry is None:
         return False
     try:
         col_telemetry.insert_one(snapshot)

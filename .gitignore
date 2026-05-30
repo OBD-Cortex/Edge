@@ -1,0 +1,30 @@
+# Python compilation files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local databases and buffers
+*.db
+telemetry_buffer.db
+
+# Backup Archives
+archive/
+
+# Local Environment configuration files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+obd-venv/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

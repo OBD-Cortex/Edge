@@ -1,93 +1,87 @@
 import time
-import random
 from can_interface import send_obd_request, recv_obd_response, send_isotp_flow_control
 from dtc_sanitizer import decode_dtc_bytes
 
-# Global state to cycle through scenarios in simulation mode
-_sim_index = 0
+def ping_ecu(bus) -> bool:
+    """
+    Pings the vehicle's ECU using standard OBD-II Service 01 PID 00 (Supported PIDs).
+    Returns True if the ECU responds, False if it times out/is unreachable.
+    """
+    if not bus:
+        return False
+    print("📡 OBD-II: Pinging vehicle ECU (Service 01 PID 00)...")
+    success = send_obd_request(bus, 0x7DF, [0x02, 0x01, 0x00])
+    if not success:
+        return False
+    msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
+    if msg and len(msg.data) >= 3 and msg.data[1] == 0x41 and msg.data[2] == 0x00:
+        print("[✓] Vehicle ECU responded to ping.")
+        return True
+    return False
 
-SIMULATION_SCENARIOS = [
-    # Scenario 1: Healthy
-    {"mil_active": False, "confirmed_dtcs": [], "pending_dtcs": []},
-    # Scenario 2: Misfire
-    {"mil_active": True, "confirmed_dtcs": ["P0300", "P0302"], "pending_dtcs": []},
-    # Scenario 3: Lean Condition
-    {"mil_active": True, "confirmed_dtcs": ["P0171"], "pending_dtcs": ["P0174"]},
-    # Scenario 4: Overheating
-    {"mil_active": True, "confirmed_dtcs": ["P0115", "P0116"], "pending_dtcs": []},
-    # Scenario 5: Catalytic Converter
-    {"mil_active": True, "confirmed_dtcs": ["P0420"], "pending_dtcs": ["P0430"]},
-    # Scenario 6: EVAP Leak
-    {"mil_active": True, "confirmed_dtcs": ["P0442"], "pending_dtcs": []},
-    # Scenario 7: O2 Sensor
-    {"mil_active": True, "confirmed_dtcs": ["P0130", "P0135"], "pending_dtcs": ["P0131"]},
-    # Scenario 8: Multi-System Failure
-    {"mil_active": True, "confirmed_dtcs": ["P0300", "P0420", "P0171", "P0507"], "pending_dtcs": ["P0128"]},
-]
-
-def read_vin(bus, is_simulated=False) -> str:
+def read_vin(bus) -> str:
     """
     Queries the vehicle's ECU via standard OBD-II PID 09 02 over CAN frame 0x7DF.
     Supports ISO-TP multi-frame reassembly.
-    Falls back to a default simulated VIN if the ECU is unresponsive or in simulation mode.
+    Retries up to 3 times before raising RuntimeError.
     """
-    if is_simulated or not bus:
-        return "VIN_12345_TEST"
+    if not bus:
+        raise RuntimeError("CAN bus is not initialized.")
 
-    print("🔍 OBD-II: Querying ECU for vehicle VIN...")
-    
-    # Send request: Service 09 PID 02
-    # Payload: [Len, Service, PID, 0, 0, 0, 0, 0]
-    success = send_obd_request(bus, 0x7DF, [0x02, 0x09, 0x02])
-    if not success:
-        return "VIN_12345_TEST"
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        print(f"🔍 OBD-II: Querying ECU for vehicle VIN (Attempt {attempt}/{max_attempts})...")
+        success = send_obd_request(bus, 0x7DF, [0x02, 0x09, 0x02])
+        if not success:
+            if attempt < max_attempts:
+                time.sleep(1.0)
+            continue
 
-    try:
-        vin_bytes = bytearray()
-        flow_control_sent = False
-        start_time = time.time()
+        try:
+            vin_bytes = bytearray()
+            flow_control_sent = False
+            start_time = time.time()
 
-        while time.time() - start_time < 3.0:
-            msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
-            if not msg:
-                continue
+            while time.time() - start_time < 3.0:
+                msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
+                if not msg:
+                    continue
 
-            data = msg.data
-            pci = data[0] & 0xF0  # Protocol Control Information
+                data = msg.data
+                pci = data[0] & 0xF0  # Protocol Control Information
 
-            # Single Frame Response
-            if pci == 0x00:
-                length = data[0] & 0x0F
-                # VIN is 17 bytes, so it will typically not fit in a single frame,
-                # but we handle it just in case
-                return data[3:3+length].decode('ascii', errors='ignore').strip()
+                # Single Frame Response
+                if pci == 0x00:
+                    length = data[0] & 0x0F
+                    return data[3:3+length].decode('ascii', errors='ignore').strip()
 
-            # First Frame (FF)
-            elif pci == 0x10:
-                length = ((data[0] & 0x0F) << 8) | data[1]
-                # Store VIN bytes starting from index 4 (skip Len, Service, PID, Info)
-                vin_bytes.extend(data[4:])
-                
-                if not flow_control_sent:
-                    send_isotp_flow_control(bus, 0x7E0)
-                    flow_control_sent = True
+                # First Frame (FF)
+                elif pci == 0x10:
+                    length = ((data[0] & 0x0F) << 8) | data[1]
+                    # Store VIN bytes starting from index 4 (skip Len, Service, PID, Info)
+                    vin_bytes.extend(data[4:])
+                    
+                    if not flow_control_sent:
+                        send_isotp_flow_control(bus, 0x7E0)
+                        flow_control_sent = True
 
-            # Consecutive Frame (CF)
-            elif pci == 0x20:
-                # Add data bytes starting from index 1 (skip CF sequence number byte)
-                vin_bytes.extend(data[1:])
-                
-                # Standard VIN is 17 characters. Service response prefix takes 3 bytes
-                if len(vin_bytes) >= 20:
-                    decoded = vin_bytes[3:20].decode('ascii', errors='ignore').strip()
-                    if len(decoded) == 17:
-                        return decoded
+                # Consecutive Frame (CF)
+                elif pci == 0x20:
+                    vin_bytes.extend(data[1:])
+                    
+                    if len(vin_bytes) >= 20:
+                        decoded = vin_bytes[3:20].decode('ascii', errors='ignore').strip()
+                        if len(decoded) == 17:
+                            return decoded
 
-        print("[!] OBD-II: VIN query timed out. ECU did not respond.")
-    except Exception as e:
-        print(f"[!] OBD-II: Error reading VIN: {e}")
+            print(f"[!] OBD-II: VIN query timed out on attempt {attempt}.")
+        except Exception as e:
+            print(f"[!] OBD-II: Error reading VIN on attempt {attempt}: {e}")
+        
+        if attempt < max_attempts:
+            time.sleep(1.0)
 
-    return "VIN_12345_TEST"
+    raise RuntimeError("Failed to retrieve vehicle VIN after retries.")
 
 def read_mil_status(bus):
     """
@@ -144,8 +138,6 @@ def _read_dtcs_from_service(bus, service_id):
             # Single Frame
             if pci == 0x00:
                 length = data[0] & 0x0F
-                # Data payload starts at index 1.
-                # data[1] is the service response byte (e.g. 0x43 or 0x47)
                 if length >= 2 and data[1] == expected_response_service:
                     dtc_bytes.extend(data[2:length+1])
                 break
@@ -154,7 +146,7 @@ def _read_dtcs_from_service(bus, service_id):
             elif pci == 0x10:
                 length = ((data[0] & 0x0F) << 8) | data[1]
                 if data[2] == expected_response_service:
-                    dtc_bytes.extend(data[3:]) # Store from index 3
+                    dtc_bytes.extend(data[3:])
                 if not flow_control_sent:
                     send_isotp_flow_control(bus, 0x7E0)
                     flow_control_sent = True
@@ -162,10 +154,6 @@ def _read_dtcs_from_service(bus, service_id):
             # Consecutive Frame
             elif pci == 0x20:
                 dtc_bytes.extend(data[1:])
-                # Stop if we read enough bytes based on first frame length indicator
-                # (remember we skipped 3 bytes of header: PCI_High, PCI_Low, Service_Response)
-                # But to be safe, standard OBD frames are short, we can collect up to the length.
-                # Each DTC is 2 bytes. We can stop when we have enough data.
                 pass
 
     except Exception as e:
@@ -173,7 +161,6 @@ def _read_dtcs_from_service(bus, service_id):
 
     # Process dtc_bytes into pairs and decode
     dtc_list = []
-    # Make sure we process in pairs
     for i in range(0, len(dtc_bytes) - 1, 2):
         b1 = dtc_bytes[i]
         b2 = dtc_bytes[i+1]
@@ -191,7 +178,7 @@ def read_pending_dtcs(bus):
     """Queries Service 07 (Pending DTCs)."""
     return _read_dtcs_from_service(bus, 0x07)
 
-def run_full_scan(bus, is_simulated=False):
+def run_full_scan(bus):
     """
     Executes a complete diagnostic scan of MIL status, confirmed, and pending DTCs.
     Returns:
@@ -201,20 +188,14 @@ def run_full_scan(bus, is_simulated=False):
         "pending_dtcs": list[str]
     }
     """
-    if is_simulated or not bus:
-        return simulate_scan()
+    if not bus:
+        raise RuntimeError("CAN bus is down, cannot perform diagnostic scan.")
 
     try:
         mil_active, dtc_count = read_mil_status(bus)
         confirmed = read_confirmed_dtcs(bus)
         pending = read_pending_dtcs(bus)
         
-        # Cross-check: If MIL is active but we got no confirmed codes,
-        # or if we got codes but MIL check didn't catch it, keep it aligned
-        if confirmed and not mil_active:
-            # Sometimes MIL takes a bit or represents a subset, but let's trust OBD readings
-            pass
-
         return {
             "mil_active": mil_active,
             "confirmed_dtcs": confirmed,
@@ -227,19 +208,3 @@ def run_full_scan(bus, is_simulated=False):
             "confirmed_dtcs": [],
             "pending_dtcs": []
         }
-
-def simulate_scan():
-    """
-    Simulates diagnostic scans. Cycles through the 8 scenarios on each call.
-    """
-    global _sim_index
-    scenario = SIMULATION_SCENARIOS[_sim_index]
-    
-    # Increment simulation index for next call (wrap around)
-    _sim_index = (_sim_index + 1) % len(SIMULATION_SCENARIOS)
-    
-    return {
-        "mil_active": scenario["mil_active"],
-        "confirmed_dtcs": list(scenario["confirmed_dtcs"]),
-        "pending_dtcs": list(scenario["pending_dtcs"])
-    }

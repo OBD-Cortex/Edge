@@ -1,5 +1,4 @@
 import time
-from config import SIMULATE
 
 try:
     import can
@@ -9,25 +8,19 @@ except ImportError:
 
 def init_can_bus():
     """
-    Initializes the SocketCAN bus interface 'can0' or returns simulation status.
-    Returns (bus_instance, is_simulated).
+    Initializes the SocketCAN bus interface 'can0'.
+    Raises RuntimeError if initialization fails.
+    Returns the bus instance.
     """
-    is_simulated = SIMULATE or not CAN_AVAILABLE
-    bus = None
+    if not CAN_AVAILABLE:
+        raise RuntimeError("python-can driver package is missing.")
 
-    if not is_simulated:
-        try:
-            bus = can.interface.Bus(channel='can0', bustype='socketcan')
-            print("[✓] CAN Bus initialized on channel 'can0'.")
-        except Exception as e:
-            print(f"[!] [CAN Bus] Initialization failed: {e}")
-            print("[*] Falling back to Simulation Mode.")
-            is_simulated = True
-            bus = None
-    else:
-        print("[*] CAN Bus running in SIMULATION mode.")
-
-    return bus, is_simulated
+    try:
+        bus = can.interface.Bus(channel='can0', bustype='socketcan')
+        print("[✓] CAN Bus initialized on channel 'can0'.")
+        return bus
+    except Exception as e:
+        raise RuntimeError(f"SocketCAN device 'can0' could not be initialized: {e}")
 
 def send_obd_request(bus, arb_id, data):
     """

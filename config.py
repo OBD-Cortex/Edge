@@ -16,9 +16,7 @@ HEARTBEAT_INTERVAL = float(os.getenv("HEARTBEAT_INTERVAL", "1800.0")) # 30 min
 RECONNECT_COOLDOWN = float(os.getenv("RECONNECT_COOLDOWN", "30.0"))   # 30 seconds
 
 # Program execution modes
-SIMULATE = os.getenv("SIMULATE", "0") == "1"
 OFFLINE_MODE = os.getenv("OFFLINE_MODE", "0") == "1" or "--offline" in sys.argv
-TEST_MODE = os.getenv("TEST_MODE", "0") == "1" or "--test" in sys.argv
 
 # For backward compatibility if someone still uses UNAME, PW, C_URL
 if not MONGO_URI and os.getenv("C_URL"):

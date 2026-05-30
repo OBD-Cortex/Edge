@@ -137,7 +137,7 @@ def flush_to_mongodb(col_telemetry):
     Tries to upload all buffered entries to MongoDB.
     On success, archives them locally and deletes them from SQLite.
     """
-    if not col_telemetry:
+    if col_telemetry is None:
         return
         
     entries = get_buffered_entries()
