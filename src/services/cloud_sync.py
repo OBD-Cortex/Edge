@@ -2,45 +2,8 @@ import json
 import datetime
 import urllib.request
 import urllib.parse
-import pymongo
-import certifi
-def connect_to_mongodb(uri):
-    """
-    Establishes connection to MongoDB Atlas or local MongoDB.
-    Returns (client, col_telemetry, col_devices) or (None, None, None).
-    """
-    if not uri:
-        print("[*] Missing URI. MongoDB connection skipped.")
-        return None, None, None
-
-    try:
-        # Configuration settings for reliability
-        client_options = {
-            "tlsCAFile": certifi.where(),
-            "serverSelectionTimeoutMS": 3000,
-            "maxPoolSize": 5,
-            "appName": "obd-cortex-edge",
-        }
-        client = pymongo.MongoClient(uri, **client_options)
-        # Test connection by pinging
-        client.admin.command('ping')
-        
-        db = client["rag_db"]
-        col_telemetry = db["vehicle_telemetry"]
-        col_devices = db["devices"]
-        return client, col_telemetry, col_devices
-    except Exception as e:
-        # Strip credentials from printing for safety
-        redacted_uri = uri
-        if "@" in uri:
-            prefix = uri.split("@")[0]
-            if "://" in prefix:
-                proto = prefix.split("://")[0]
-                redacted_uri = f"{proto}://[REDACTED_USER_PASS]@{uri.split('@')[1]}"
-            else:
-                redacted_uri = f"[REDACTED_USER_PASS]@{uri.split('@')[1]}"
-        print(f"[!] Database Connection Attempt Failed: {e} (URI: {redacted_uri})")
-        return None, None, None
+import requests
+from core.config import RAG_API_URL, MOBILE_API_KEY
 
 def decode_vin(vin: str) -> tuple:
     """
@@ -76,50 +39,28 @@ def decode_vin(vin: str) -> tuple:
     # Fallback to generic metadata
     return "Unknown", "Unknown", "Unknown"
 
-def register_device(col_devices, device_token, vin, brand, model, year):
+def register_device(device_token, vin, brand, model, year):
     """
-    Binds the device token to the vehicle VIN and metadata in the database.
-    Preserves 'paired' status if an owner_id exists on the token.
-    Uses 'is not None' for Collection truthiness safety.
+    Registers the device with the RAG API, binding it to the vehicle VIN.
     """
-    if col_devices is None:
+    if not RAG_API_URL or not MOBILE_API_KEY:
+        print("[!] Missing RAG_API_URL or MOBILE_API_KEY.")
         return False
+        
     try:
-        device_record = col_devices.find_one({"device_token": device_token})
-        if device_record:
-            status = "registered" if not device_record.get("owner_id") else "paired"
-            col_devices.update_one(
-                {"device_token": device_token},
-                {
-                    "$set": {
-                        "vin": vin,
-                        "brand": brand,
-                        "model": model,
-                        "year": year,
-                        "status": status,
-                        "registered_at": datetime.datetime.now(datetime.timezone.utc)
-                    }
-                }
-            )
-            print(f"[✓] Cloud Registry: Token [{device_token}] mapped to VIN [{vin}] ({brand} {model} {year}) as '{status}'.")
+        url = f"{RAG_API_URL}/api/device/register"
+        headers = {"X-API-Key": MOBILE_API_KEY}
+        payload = {
+            "device_token": device_token,
+            "vin": vin
+        }
+        res = requests.post(url, json=payload, headers=headers, timeout=5)
+        if res.status_code == 200:
+            print(f"[✓] Cloud Registry: Token [{device_token}] mapped to VIN [{vin}] ({brand} {model} {year}).")
             return True
         else:
-            print(f"[!] Cloud Registry Warning: Token [{device_token}] not found in database.")
+            print(f"[!] Cloud Registry Warning: API returned {res.status_code}: {res.text}")
             return False
     except Exception as e:
         print(f"[!] Cloud Registry: Failed to sync device binding: {e}")
-        return False
-
-def upload_telemetry(col_telemetry, snapshot):
-    """
-    Uploads a single telemetry document directly to MongoDB.
-    Uses 'is not None' for Collection truthiness safety.
-    """
-    if col_telemetry is None:
-        return False
-    try:
-        col_telemetry.insert_one(snapshot)
-        return True
-    except Exception as e:
-        print(f"[!] Direct Telemetry Upload failed: {e}")
         return False

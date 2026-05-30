@@ -15,7 +15,8 @@ import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.config import (
-    MONGO_URI,
+    RAG_API_URL,
+    MOBILE_API_KEY,
     DEVICE_TOKEN,
     SCAN_INTERVAL,
     HEARTBEAT_INTERVAL,
@@ -24,9 +25,8 @@ from core.config import (
 from core.can_interface import init_can_bus, shutdown_can_bus
 from services.obd_scanner import ping_ecu, read_vin, run_full_scan
 from services.dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
-from core.telemetry_buffer import init_buffer, save_to_buffer, flush_to_mongodb
-from services.cloud_sync import connect_to_mongodb, register_device, decode_vin
-from services.atlas_whitelist import whitelist_device_ip
+from core.telemetry_buffer import init_buffer, save_to_buffer, flush_to_cloud
+from services.cloud_sync import register_device, decode_vin
 
 def build_telemetry_document(vin, raw_scan):
     """
@@ -66,9 +66,6 @@ def build_telemetry_document(vin, raw_scan):
 
 def main():
     print(f"--- OBD-CORTEX DATA LOGGER ---")
-
-    # 0. Automatically whitelist device IP in MongoDB Atlas (if API keys are provided)
-    whitelist_device_ip()
 
     print(f"Device Token: {DEVICE_TOKEN}")
     print(f"Scan Interval: {SCAN_INTERVAL}s")
@@ -112,24 +109,17 @@ def main():
         shutdown_can_bus(bus)
         sys.exit(1)
 
-    # 4. Connect to MongoDB (initial connection)
-    # Exits immediately at boot if connection is unreachable or configuration is missing
-    if not MONGO_URI:
-        print("[!] Error: Required environment variable MONGO_URI is missing.")
+    # 4. Check API Configuration
+    if not RAG_API_URL or not MOBILE_API_KEY:
+        print("[!] Error: Required environment variables RAG_API_URL or MOBILE_API_KEY are missing.")
         shutdown_can_bus(bus)
         sys.exit(1)
 
-    mongo_client, col_telemetry, col_devices = connect_to_mongodb(MONGO_URI)
-    if mongo_client is None:
-        print("[!] Error: Could not connect to MongoDB database at startup. Aborting.")
-        shutdown_can_bus(bus)
-        sys.exit(1)
-
-    print("[✓] Connected to MongoDB Cloud Database.")
+    print(f"[✓] Connected to Central API Server: {RAG_API_URL}")
 
     # 5. NHTSA Decode vehicle info and register device
     brand, model, year = decode_vin(vin)
-    register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
+    register_device(DEVICE_TOKEN, vin, brand, model, year)
 
     # 6. Core Streaming loop
     last_scan_state = None
@@ -140,15 +130,9 @@ def main():
         while True:
             current_time = time.time()
             
-            # Reconnection logic if MongoDB is offline
-            if mongo_client is None:
-                if current_time - last_reconnect_time > RECONNECT_COOLDOWN:
-                    print("🔄 [Database] Attempting background reconnection to MongoDB Atlas...")
-                    last_reconnect_time = current_time
-                    mongo_client, col_telemetry, col_devices = connect_to_mongodb(MONGO_URI)
-                    if mongo_client is not None:
-                        print("[✓] Reconnection Successful! Cloud database is online.")
-                        register_device(col_devices, DEVICE_TOKEN, vin, brand, model, year)
+            # Reconnection/Keep-alive logic placeholder
+            if current_time - last_reconnect_time > RECONNECT_COOLDOWN:
+                last_reconnect_time = current_time
 
             # A. Run full diagnostic scan
             raw_scan = run_full_scan(bus)
@@ -167,9 +151,8 @@ def main():
                 # Store snapshot in local SQLite buffer first (ensures zero data loss)
                 save_to_buffer(telemetry)
 
-                # Attempt to flush the SQLite buffer to MongoDB
-                if col_telemetry is not None:
-                    flush_to_mongodb(col_telemetry)
+                # Attempt to flush the SQLite buffer to the Cloud API
+                flush_to_cloud()
                     
                 # Reset timers and state tracking
                 last_scan_state = raw_scan
@@ -187,12 +170,6 @@ def main():
     finally:
         print("\n--- SHUTTING DOWN OBD-CORTEX LOGGER ---")
         shutdown_can_bus(bus)
-        if mongo_client is not None:
-            try:
-                mongo_client.close()
-                print("[Database] MongoDB connection pool closed.")
-            except Exception as e:
-                print(f"[!] Error closing MongoDB connection: {e}")
 
 if __name__ == "__main__":
     main()
