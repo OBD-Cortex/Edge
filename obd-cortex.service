@@ -1,0 +1,18 @@
+[Unit]
+Description=OBD-Cortex Data Logger
+After=network.target
+
+[Service]
+# CRITICAL: Point directly to the python binary inside your venv folder
+ExecStart=/home/obdpi/obd-cortex/obd-venv/bin/python /home/obdpi/obd-cortex/main.py
+
+# Set the working directory so it finds your .env files
+WorkingDirectory=/home/obdpi/obd-cortex
+
+# Restart automatically if it crashes
+Restart=on-failure
+RestartSec=10
+User=obdpi
+
+[Install]
+WantedBy=multi-user.target

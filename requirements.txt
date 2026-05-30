@@ -1,0 +1,4 @@
+python-can
+pymongo
+certifi
+python-dotenv
