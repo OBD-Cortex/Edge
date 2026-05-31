@@ -133,7 +133,7 @@ def flush_to_cloud():
     Tries to upload all buffered entries to the Central RAG API.
     On success, archives them locally and deletes them from SQLite.
     """
-    if not RAG_API_URL or not MOBILE_API_KEY:
+    if not RAG_API_URL or not DEVICE_TOKEN:
         return
         
     entries = get_buffered_entries()

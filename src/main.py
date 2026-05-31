@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.config import (
     RAG_API_URL,
-    MOBILE_API_KEY,
     DEVICE_TOKEN,
     SCAN_INTERVAL,
     HEARTBEAT_INTERVAL,
@@ -110,8 +109,8 @@ def main():
         sys.exit(1)
 
     # 4. Check API Configuration
-    if not RAG_API_URL or not MOBILE_API_KEY:
-        print("[!] Error: Required environment variables RAG_API_URL or MOBILE_API_KEY are missing.")
+    if not RAG_API_URL or not DEVICE_TOKEN:
+        print("[!] Error: Required environment variables RAG_API_URL or DEVICE_TOKEN are missing.")
         shutdown_can_bus(bus)
         sys.exit(1)
 

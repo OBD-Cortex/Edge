@@ -1,7 +1,4 @@
-import json
 import datetime
-import urllib.request
-import urllib.parse
 import requests
 from core.config import RAG_API_URL, DEVICE_TOKEN
 
@@ -19,20 +16,16 @@ def decode_vin(vin: str) -> tuple:
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
     
     try:
-        req = urllib.request.Request(
-            url, 
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        # Timeout of 3 seconds to avoid blocking boot sequence
-        with urllib.request.urlopen(req, timeout=3.0) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            results = res_data.get("Results", [])
-            if results:
-                car_info = results[0]
-                brand = car_info.get("Make", "").strip() or "Unknown"
-                model = car_info.get("Model", "").strip() or "Unknown"
-                year = car_info.get("ModelYear", "").strip() or "Unknown"
-                return brand, model, year
+        resp = requests.get(url, timeout=5, headers={"User-Agent": "OBD-Cortex/1.0"})
+        resp.raise_for_status()
+        res_data = resp.json()
+        results = res_data.get("Results", [])
+        if results:
+            car_info = results[0]
+            brand = car_info.get("Make", "").strip() or "Unknown"
+            model = car_info.get("Model", "").strip() or "Unknown"
+            year = car_info.get("ModelYear", "").strip() or "Unknown"
+            return brand, model, year
     except Exception as e:
         print(f"[!] OBD-II: Failed to decode VIN from API: {e}")
 
@@ -51,7 +44,10 @@ def register_device(device_token, vin, brand, model, year):
         url = f"{RAG_API_URL}/api/device/register"
         headers = {"X-Device-Token": device_token}
         payload = {
-            "vin": vin
+            "vin": vin,
+            "brand": brand,
+            "model": model,
+            "year": year
         }
         res = requests.post(url, json=payload, headers=headers, timeout=5)
         if res.status_code == 200:
