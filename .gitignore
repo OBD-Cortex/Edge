@@ -25,6 +25,7 @@ ENV/
 env/
 obd-venv/
 
-# OS-specific files
-.DS_Store
-Thumbs.db
+# Propject specific files
+.antigravity/
+Testing/
+AGENTS.md

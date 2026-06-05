@@ -1,21 +1,25 @@
 import time
+import logging
 from core.can_interface import send_obd_request, recv_obd_response, send_isotp_flow_control
 from services.dtc_sanitizer import decode_dtc_bytes
+
+logger = logging.getLogger(__name__)
 
 def ping_ecu(bus) -> bool:
     """
     Pings the vehicle's ECU using standard OBD-II Service 01 PID 00 (Supported PIDs).
-    Returns True if the ECU responds, False if it times out/is unreachable.
+    Returns True if any ECU responds (0x7E8–0x7EF), False if it times out/is unreachable.
     """
     if not bus:
         return False
-    print("📡 OBD-II: Pinging vehicle ECU (Service 01 PID 00)...")
+    logger.info("OBD-II: Pinging vehicle ECU (Service 01 PID 00)...")
     success = send_obd_request(bus, 0x7DF, [0x02, 0x01, 0x00])
     if not success:
         return False
-    msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
+    # Accept responses from any active ECU in the range 0x7E8 - 0x7EF
+    msg = recv_obd_response(bus, range(0x7E8, 0x7F0), timeout=0.5)
     if msg and len(msg.data) >= 3 and msg.data[1] == 0x41 and msg.data[2] == 0x00:
-        print("[✓] Vehicle ECU responded to ping.")
+        logger.info(f"Vehicle ECU (0x{msg.arbitration_id:03X}) responded to ping.")
         return True
     return False
 
@@ -30,7 +34,7 @@ def read_vin(bus) -> str:
 
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
-        print(f"🔍 OBD-II: Querying ECU for vehicle VIN (Attempt {attempt}/{max_attempts})...")
+        logger.info(f"OBD-II: Querying ECU for vehicle VIN (Attempt {attempt}/{max_attempts})...")
         success = send_obd_request(bus, 0x7DF, [0x02, 0x09, 0x02])
         if not success:
             if attempt < max_attempts:
@@ -43,7 +47,8 @@ def read_vin(bus) -> str:
             start_time = time.time()
 
             while time.time() - start_time < 3.0:
-                msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
+                # Listen to responses from any active ECU range 0x7E8 - 0x7EF
+                msg = recv_obd_response(bus, range(0x7E8, 0x7F0), timeout=0.5)
                 if not msg:
                     continue
 
@@ -58,11 +63,12 @@ def read_vin(bus) -> str:
                 # First Frame (FF)
                 elif pci == 0x10:
                     length = ((data[0] & 0x0F) << 8) | data[1]
-                    # Store VIN bytes starting from index 4 (skip Len, Service, PID, Info)
-                    vin_bytes.extend(data[4:])
+                    # Store VIN bytes starting from index 2 to align with [3:20] slice
+                    vin_bytes.extend(data[2:])
                     
                     if not flow_control_sent:
-                        send_isotp_flow_control(bus, 0x7E0)
+                        # Flow control ID is exactly response_id - 8 (e.g. 0x7E8 -> 0x7E0)
+                        send_isotp_flow_control(bus, msg.arbitration_id - 8)
                         flow_control_sent = True
 
                 # Consecutive Frame (CF)
@@ -74,9 +80,9 @@ def read_vin(bus) -> str:
                         if len(decoded) == 17:
                             return decoded
 
-            print(f"[!] OBD-II: VIN query timed out on attempt {attempt}.")
+            logger.warning(f"OBD-II: VIN query timed out on attempt {attempt}.")
         except Exception as e:
-            print(f"[!] OBD-II: Error reading VIN on attempt {attempt}: {e}")
+            logger.error(f"OBD-II: Error reading VIN on attempt {attempt}: {e}")
         
         if attempt < max_attempts:
             time.sleep(1.0)
@@ -86,6 +92,7 @@ def read_vin(bus) -> str:
 def read_mil_status(bus):
     """
     Queries Service 01 PID 01 to read MIL status (check engine light) and stored DTC count.
+    Aggregates checks and counts across all responding ECUs (0x7E8–0x7EF).
     Returns (mil_active: bool, dtc_count: int).
     """
     if not bus:
@@ -95,21 +102,39 @@ def read_mil_status(bus):
     if not success:
         return False, 0
 
-    msg = recv_obd_response(bus, 0x7E8, timeout=0.5)
-    if msg and len(msg.data) >= 4 and msg.data[1] == 0x41 and msg.data[2] == 0x01:
-        # msg.data[3] contains monitor status:
-        # Bit 7: MIL status (1 = active, 0 = inactive)
-        # Bits 6-0: Count of confirmed DTCs
-        mil_active = bool(msg.data[3] & 0x80)
-        dtc_count = msg.data[3] & 0x7F
-        return mil_active, dtc_count
+    mil_active = False
+    total_dtc_count = 0
+    start_time = time.time()
+    responded_ecus = set()
 
-    return False, 0
+    # Collect responses for up to 0.5 seconds
+    while time.time() - start_time < 0.5:
+        msg = recv_obd_response(bus, range(0x7E8, 0x7F0), timeout=0.2)
+        if not msg:
+            continue
+
+        ecu_id = msg.arbitration_id
+        if ecu_id in responded_ecus:
+            continue
+        responded_ecus.add(ecu_id)
+
+        data = msg.data
+        if len(data) >= 4 and data[1] == 0x41 and data[2] == 0x01:
+            # data[3] contains monitor status:
+            # Bit 7: MIL status (1 = active, 0 = inactive)
+            # Bits 6-0: Count of confirmed DTCs
+            ecu_mil = bool(data[3] & 0x80)
+            ecu_dtc_count = data[3] & 0x7F
+            
+            mil_active = mil_active or ecu_mil
+            total_dtc_count += ecu_dtc_count
+
+    return mil_active, total_dtc_count
 
 def _read_dtcs_from_service(bus, service_id):
     """
     Helper to request DTC bytes for a service (0x03 for Confirmed, 0x07 for Pending)
-    and parse them. Supports ISO-TP multi-frame.
+    and parse them. Supports ISO-TP multi-frame for multiple responding ECUs (0x7E8–0x7EF).
     Returns a list of decoded DTC string codes.
     """
     if not bus:
@@ -121,15 +146,33 @@ def _read_dtcs_from_service(bus, service_id):
     if not success:
         return []
 
-    dtc_bytes = bytearray()
-    flow_control_sent = False
-    start_time = time.time()
+    # Map of ecu_id -> {"dtc_bytes": bytearray(), "expected_len": int/None, "flow_control_sent": bool, "complete": bool}
+    ecu_states = {}
     expected_response_service = 0x40 + service_id
+    start_time = time.time()
+    last_msg_time = start_time
 
     try:
         while time.time() - start_time < 2.0:
-            msg = recv_obd_response(bus, 0x7E8, timeout=0.4)
+            msg = recv_obd_response(bus, range(0x7E8, 0x7F0), timeout=0.1)
             if not msg:
+                if ecu_states and all(s["complete"] for s in ecu_states.values()):
+                    if time.time() - last_msg_time > 0.1:
+                        break
+                continue
+
+            last_msg_time = time.time()
+            ecu_id = msg.arbitration_id
+            if ecu_id not in ecu_states:
+                ecu_states[ecu_id] = {
+                    "dtc_bytes": bytearray(),
+                    "expected_len": None,
+                    "flow_control_sent": False,
+                    "complete": False
+                }
+
+            state = ecu_states[ecu_id]
+            if state["complete"]:
                 continue
 
             data = msg.data
@@ -139,34 +182,51 @@ def _read_dtcs_from_service(bus, service_id):
             if pci == 0x00:
                 length = data[0] & 0x0F
                 if length >= 2 and data[1] == expected_response_service:
-                    dtc_bytes.extend(data[2:length+1])
-                break
+                    state["dtc_bytes"].extend(data[2:length+1])
+                state["complete"] = True
 
             # First Frame
             elif pci == 0x10:
                 length = ((data[0] & 0x0F) << 8) | data[1]
+                state["expected_len"] = length
                 if data[2] == expected_response_service:
-                    dtc_bytes.extend(data[3:])
-                if not flow_control_sent:
-                    send_isotp_flow_control(bus, 0x7E0)
-                    flow_control_sent = True
+                    # Only extend valid payload bytes (exclude padding)
+                    valid_len = min(5, length - 1)
+                    state["dtc_bytes"].extend(data[3:3+valid_len])
+                if not state["flow_control_sent"]:
+                    send_isotp_flow_control(bus, ecu_id - 8)
+                    state["flow_control_sent"] = True
 
             # Consecutive Frame
             elif pci == 0x20:
-                dtc_bytes.extend(data[1:])
-                pass
+                if state["expected_len"] is not None:
+                    remaining = (state["expected_len"] - 1) - len(state["dtc_bytes"])
+                    valid_len = min(7, remaining)
+                    if valid_len > 0:
+                        state["dtc_bytes"].extend(data[1:1+valid_len])
+                    if len(state["dtc_bytes"]) >= state["expected_len"] - 1:
+                        state["complete"] = True
+                else:
+                    state["dtc_bytes"].extend(data[1:])
+
+            # If all responding ECUs are complete, exit early
+            if ecu_states and all(s["complete"] for s in ecu_states.values()):
+                if time.time() - last_msg_time > 0.1:
+                    break
 
     except Exception as e:
-        print(f"[!] OBD-II: Error reading DTCs for Service 0x{service_id:02X}: {e}")
+        logger.error(f"OBD-II: Error reading DTCs for Service 0x{service_id:02X}: {e}")
 
-    # Process dtc_bytes into pairs and decode
+    # Process dtc_bytes into pairs and decode for each ECU, then aggregate
     dtc_list = []
-    for i in range(0, len(dtc_bytes) - 1, 2):
-        b1 = dtc_bytes[i]
-        b2 = dtc_bytes[i+1]
-        code = decode_dtc_bytes(b1, b2)
-        if code and code != "P0000":
-            dtc_list.append(code)
+    for ecu_id, state in ecu_states.items():
+        dtc_bytes = state["dtc_bytes"]
+        for i in range(0, len(dtc_bytes) - 1, 2):
+            b1 = dtc_bytes[i]
+            b2 = dtc_bytes[i+1]
+            code = decode_dtc_bytes(b1, b2)
+            if code and code != "P0000" and code not in dtc_list:
+                dtc_list.append(code)
 
     return dtc_list
 
@@ -202,7 +262,7 @@ def run_full_scan(bus):
             "pending_dtcs": pending
         }
     except Exception as e:
-        print(f"[!] OBD-II Scan error: {e}")
+        logger.error(f"OBD-II Scan error: {e}")
         return {
             "mil_active": False,
             "confirmed_dtcs": [],

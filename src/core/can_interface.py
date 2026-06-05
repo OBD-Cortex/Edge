@@ -1,4 +1,7 @@
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     import can
@@ -17,7 +20,7 @@ def init_can_bus():
 
     try:
         bus = can.interface.Bus(channel='can0', bustype='socketcan')
-        print("[✓] CAN Bus initialized on channel 'can0'.")
+        logger.info("[✓] CAN Bus initialized on channel 'can0'.")
         return bus
     except Exception as e:
         raise RuntimeError(f"SocketCAN device 'can0' could not be initialized: {e}")
@@ -39,12 +42,13 @@ def send_obd_request(bus, arb_id, data):
         bus.send(msg)
         return True
     except Exception as e:
-        print(f"[!] [CAN Bus] Failed to send request: {e}")
+        logger.error(f"[CAN Bus] Failed to send request: {e}")
         return False
 
 def recv_obd_response(bus, expected_id, timeout=0.5):
     """
     Blocks until a response with the expected arbitration ID is received or timeout expires.
+    The expected_id parameter can be a single integer or a collection/range of integers.
     """
     if not bus:
         return None
@@ -52,10 +56,14 @@ def recv_obd_response(bus, expected_id, timeout=0.5):
     try:
         while time.time() - start_time < timeout:
             msg = bus.recv(timeout=timeout)
-            if msg and msg.arbitration_id == expected_id:
-                return msg
+            if msg:
+                if isinstance(expected_id, (int, float)):
+                    if msg.arbitration_id == expected_id:
+                        return msg
+                elif msg.arbitration_id in expected_id:
+                    return msg
     except Exception as e:
-        print(f"[!] [CAN Bus] Error receiving frame: {e}")
+        logger.error(f"[CAN Bus] Error receiving frame: {e}")
     return None
 
 def send_isotp_flow_control(bus, flow_control_id=0x7E0):
@@ -73,8 +81,8 @@ def shutdown_can_bus(bus):
     if bus:
         try:
             bus.shutdown()
-            print("[✓] CAN Bus socket closed cleanly.")
+            logger.info("[✓] CAN Bus socket closed cleanly.")
             return True
         except Exception as e:
-            print(f"[!] [CAN Bus] Error closing CAN bus: {e}")
+            logger.error(f"[CAN Bus] Error closing CAN bus: {e}")
     return False

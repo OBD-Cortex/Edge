@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Embedded-Automotive-Edge Gateway Logger
 OBD-Cortex IoT Telemetry Streamer for Raspberry Pi 4.
@@ -11,6 +11,13 @@ import os
 import sys
 import time
 import datetime
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -54,7 +61,7 @@ def build_telemetry_document(vin, raw_scan):
 
     return {
         "vehicle_id": vin,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "mil_active": raw_scan["mil_active"],
         "dtc_count": len(confirmed_enriched) + len(pending_enriched),
         "confirmed_dtcs": confirmed_enriched,
@@ -64,19 +71,20 @@ def build_telemetry_document(vin, raw_scan):
     }
 
 def main():
-    print(f"--- OBD-CORTEX DATA LOGGER ---")
+    logger.info("--- OBD-CORTEX DATA LOGGER ---")
 
-    print(f"Device Token: {DEVICE_TOKEN}")
-    print(f"Scan Interval: {SCAN_INTERVAL}s")
-    print(f"Heartbeat Interval: {HEARTBEAT_INTERVAL}s")
-    print("Press Ctrl+C to exit.\n")
+    redacted_token = f"{DEVICE_TOKEN[:8]}..." if DEVICE_TOKEN else "None"
+    logger.info(f"Device Token: {redacted_token}")
+    logger.info(f"Scan Interval: {SCAN_INTERVAL}s")
+    logger.info(f"Heartbeat Interval: {HEARTBEAT_INTERVAL}s")
+    logger.info("Press Ctrl+C to exit.")
 
     # 1. Initialize hardware interfaces and local buffer
     bus = None
     try:
         bus = init_can_bus()
     except RuntimeError as e:
-        print(f"[!] Hardware error: {e}")
+        logger.error(f"Hardware error: {e}")
         sys.exit(1)
 
     init_buffer()
@@ -90,11 +98,11 @@ def main():
             ecu_found = True
             break
         if attempt < ping_attempts:
-            print(f"[!] Vehicle ECU is unresponsive. Waiting 2s before retry {attempt + 1}/{ping_attempts}...")
+            logger.warning(f"Vehicle ECU is unresponsive. Waiting 2s before retry {attempt + 1}/{ping_attempts}...")
             time.sleep(2.0)
 
     if not ecu_found:
-        print("[!] Error: Vehicle ECU did not respond. Is the ignition on?")
+        logger.error("Vehicle ECU did not respond. Is the ignition on?")
         shutdown_can_bus(bus)
         sys.exit(1)
 
@@ -102,19 +110,19 @@ def main():
     # Internally retries up to 3 times
     try:
         vin = read_vin(bus)
-        print(f"🚗 VEHICLE VIN IDENTIFIED: {vin}")
+        logger.info(f"VEHICLE VIN IDENTIFIED: {vin}")
     except RuntimeError as e:
-        print(f"[!] {e}")
+        logger.error(str(e))
         shutdown_can_bus(bus)
         sys.exit(1)
 
     # 4. Check API Configuration
     if not RAG_API_URL or not DEVICE_TOKEN:
-        print("[!] Error: Required environment variables RAG_API_URL or DEVICE_TOKEN are missing.")
+        logger.error("Required environment variables RAG_API_URL or DEVICE_TOKEN are missing.")
         shutdown_can_bus(bus)
         sys.exit(1)
 
-    print(f"[✓] Connected to Central API Server: {RAG_API_URL}")
+    logger.info(f"Connected to Central API Server: {RAG_API_URL}")
 
     # 5. NHTSA Decode vehicle info and register device
     brand, model, year = decode_vin(vin)
@@ -142,7 +150,7 @@ def main():
 
             if state_changed or heartbeat_due:
                 reason = "DTC State Changed" if state_changed else "Heartbeat Interval Elapsed"
-                print(f"[!] Triggering telemetry capture. Reason: {reason}")
+                logger.info(f"Triggering telemetry capture. Reason: {reason}")
                 
                 # Assemble telemetry snapshot document
                 telemetry = build_telemetry_document(vin, raw_scan)
@@ -163,11 +171,11 @@ def main():
             time.sleep(SCAN_INTERVAL)
 
     except KeyboardInterrupt:
-        print("\n[!] Logger process terminated by user.")
+        logger.info("Logger process terminated by user.")
     except Exception as e:
-        print(f"[!] Critical loop error: {e}")
+        logger.error(f"Critical loop error: {e}")
     finally:
-        print("\n--- SHUTTING DOWN OBD-CORTEX LOGGER ---")
+        logger.info("--- SHUTTING DOWN OBD-CORTEX LOGGER ---")
         shutdown_can_bus(bus)
 
 if __name__ == "__main__":

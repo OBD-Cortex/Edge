@@ -32,7 +32,7 @@ This system relies on specific embedded hardware to ensure stable logic compatib
 * **Driver:** `mcp2515-can0` (SocketCAN overlay)
 * **Language:** Python 3.13
 * **Virtual Env:** `venv` (Isolated environment)
-* **Libraries:** `python-can`, `pymongo`, `python-dotenv`, `requests`
+* **Libraries:** `python-can`, `python-dotenv`, `requests`
 
 ---
 
@@ -75,7 +75,7 @@ source obd-venv/bin/activate  # (Or activate.fish for Fish shell)
 
 # 4. Install Dependencies
 pip install --upgrade pip
-pip install python-can requests pymongo python-dotenv
+pip install python-can requests python-dotenv
 
 ```
 
@@ -107,44 +107,24 @@ sudo systemctl status obd-cortex.service
 
 
 
+## 📊 Telemetry Data Format
+
+Telemetry captured from the CAN Bus is formatted into standard JSON payloads before buffering and syncing:
+
+```json
+{
+  "vehicle_id": "17_CHAR_VIN_NUMBER",
+  "timestamp": "2026-06-05T11:12:02.628000+00:00",
+  "mil_active": false,
+  "dtc_count": 0,
+  "confirmed_dtcs": [],
+  "pending_dtcs": [],
+  "system_status": "healthy",
+  "scan_summary": "System healthy. CHECK ENGINE OFF. No confirmed or pending Diagnostic Trouble Codes (DTCs) detected."
+}
+```
+
 ---
 
-## 🧪 Testing & Validation
+*(Note: Testing and Validation instructions have been moved to the `Testing/` directory. Please see `Testing/README.md` for details.)*
 
-The current `main.py` is configured for a **Manual Trigger Loopback Test**. This allows you to verify hardware connectivity without a vehicle.
-
-### Step 1: Start the Listener
-
-Ensure the service is running (it starts automatically), or run it manually:
-
-```bash
-# Inside ~/obd-cortex
-./obd-venv/bin/python src/main.py
-
-```
-
-*Output:* `TEST: System ready. Waiting for manual trigger...`
-
-### Step 2: Send the Trigger
-
-Open a **new terminal window** and send the secret handshake packet:
-
-```bash
-cansend can0 123#DEADBEEF
-
-```
-
-### Step 3: Verify Success
-
-Check the logs of the main program:
-
-```bash
-journalctl -u obd-cortex.service -f
-
-```
-
-*Expected Output:*
-
-> `RECEIVED: ID=0x123 Data=DEADBEEF`
-> `PASSED: Manual test confirmed!`
-> `--- SYSTEM HEALTHY: GoodBye! ---`
