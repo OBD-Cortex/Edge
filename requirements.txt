@@ -1,4 +1,2 @@
 python-can
-python-dotenv
 requests
-cryptography

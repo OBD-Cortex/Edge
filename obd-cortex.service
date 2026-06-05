@@ -3,6 +3,9 @@ Description=OBD-Cortex Data Logger
 After=network.target
 
 [Service]
+# Let the OS inject the environment securely
+EnvironmentFile=/home/obdpi/obd-cortex/.env
+
 # CRITICAL: Point directly to the python binary inside your venv folder
 ExecStart=/home/obdpi/obd-cortex/obd-venv/bin/python /home/obdpi/obd-cortex/src/main.py
 
@@ -13,6 +16,13 @@ WorkingDirectory=/home/obdpi/obd-cortex
 Restart=on-failure
 RestartSec=10
 User=obdpi
+
+# Production logging & timeout configuration
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=obd-cortex
+TimeoutStartSec=30
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

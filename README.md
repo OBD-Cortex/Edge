@@ -32,7 +32,7 @@ This system relies on specific embedded hardware to ensure stable logic compatib
 * **Driver:** `mcp2515-can0` (SocketCAN overlay)
 * **Language:** Python 3.13
 * **Virtual Env:** `venv` (Isolated environment)
-* **Libraries:** `python-can`, `python-dotenv`, `requests`, `cryptography`
+* **Libraries:** `python-can`, `requests`
 
 ---
 
@@ -75,7 +75,7 @@ source obd-venv/bin/activate  # (Or activate.fish for Fish shell)
 
 # 4. Install Dependencies
 pip install --upgrade pip
-pip install python-can requests python-dotenv
+pip install python-can requests
 
 ```
 
@@ -128,22 +128,30 @@ Telemetry captured from the CAN Bus is formatted into standard JSON payloads bef
 
 ## 🔒 Security & Asymmetric Authentication
 
-To ensure secure device communication, the Edge Gateway uses **ECDSA (NIST P-256)** asymmetric cryptography for authentication:
+To ensure secure device communication without complex state or OOP overhead, the Edge Gateway uses **HMAC-SHA256** symmetric cryptography for authentication within a strict **functional programming paradigm**:
 
 1. **One-Time Provisioning**:
-   - On the first boot, if the gateway is not provisioned, it generates an ECDSA key pair.
+   - On the first boot, if the gateway is not provisioned, it generates a 32-byte shared secret using pure functions.
    - It registers with the RAG API via `POST /api/device/provision` using the one-time `DEVICE_TOKEN` in the `X-Device-Token` header.
-   - The gateway uploads its PEM-encoded public key alongside vehicle metadata.
-   - The central API stores the public key and returns a sequential integer `device_id`, which is saved locally to `.keys/device_id`.
-   - The private key is saved with strict `0600` owner-only file permissions to `.keys/private.pem`.
+   - The gateway uploads its secret alongside vehicle metadata.
+   - The central API stores the secret and returns a sequential integer `device_id`, which is saved locally to `.keys/device_id`.
+   - The device secret is saved with strict `0600` owner-only file permissions to `.keys/device_secret`.
 
 2. **Signed Telemetry Sync**:
-   - For all subsequent telemetry uploads, the gateway signs the batch upload JSON payload using its private key.
-   - The signature is created over the concatenated string `X-Timestamp + payload_bytes` using SHA-256.
+   - For all subsequent telemetry uploads, the gateway signs the batch upload JSON payload using its shared secret.
+   - The signature is created over the concatenated string `X-Timestamp + payload_bytes` using HMAC-SHA256.
    - Requests are sent with the following headers instead of the static `DEVICE_TOKEN`:
      - `X-Device-ID`: The assigned integer device ID.
      - `X-Signature`: The hex-encoded signature.
      - `X-Timestamp`: The ISO-8601 UTC timestamp of the request.
+
+---
+
+## 🏗️ Architectural Paradigm
+- **Strict Functional Style**: All code across the Edge Gateway operates functionally. There are **zero OOP classes**. State is immutable where possible, and side-effects are isolated to the system boundary.
+- **Dependency & Environment Injection**: The Gateway relies on environment variables injected securely by the host OS or via systemd's `EnvironmentFile` directive loading from local configuration files.
+- **Defensive Frame Parsing (QA Audit June 2026)**: Added defensive checks to the SocketCAN frame processing loop to prevent `IndexError` crashes on empty or corrupted messages.
+- **Production Systemd Configuration**: Systemd service configured with journald integration, syslog identifier logging, and startup/shutdown timeout safeguards.
 
 ---
 

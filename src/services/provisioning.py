@@ -2,7 +2,7 @@ import logging
 import requests
 from pathlib import Path
 from core.config import BASE_DIR, RAG_API_URL, DEVICE_TOKEN
-from core.crypto import generate_key_pair
+from core.crypto import generate_secret
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +12,9 @@ DEVICE_ID_PATH = KEYS_DIR / "device_id"
 def provision_device(vin: str, brand: str, model: str, year: str) -> int:
     """
     Performs one-time device provisioning.
-    1. Generates an ECDSA key pair and saves the private key.
-    2. Sends the public key and vehicle info to the central API.
+    1. Generates a symmetric HMAC secret.
+    2. Sends the secret and vehicle info to the central API.
     3. Saves the returned device_id on success.
-    
-    Raises RuntimeError on any failure.
     """
     if not RAG_API_URL:
         raise RuntimeError("RAG_API_URL is not configured.")
@@ -26,20 +24,18 @@ def provision_device(vin: str, brand: str, model: str, year: str) -> int:
 
     logger.info("Starting one-time device provisioning flow...")
     
-    # 1. Generate local key pair
     try:
-        public_key_pem = generate_key_pair()
+        secret = generate_secret()
     except Exception as e:
-        raise RuntimeError(f"Failed to generate key pair: {e}")
+        raise RuntimeError(f"Failed to generate secret: {e}")
 
-    # 2. Register public key with the central server
     url = f"{RAG_API_URL}/api/device/provision"
     headers = {
         "X-Device-Token": DEVICE_TOKEN,
         "Content-Type": "application/json"
     }
     payload = {
-        "public_key": public_key_pem,
+        "device_secret": secret,
         "vin": vin,
         "brand": brand,
         "model": model,
@@ -57,11 +53,8 @@ def provision_device(vin: str, brand: str, model: str, year: str) -> int:
         res_json = res.json()
         device_id = res_json.get("device_id")
         if device_id is None:
-            # Check if nested in some other field or structure
-            logger.error(f"[!] Unexpected provisioning response: {res.text}")
             raise RuntimeError("Provisioning response did not contain 'device_id'.")
             
-        # 3. Persist the assigned device_id
         KEYS_DIR.mkdir(parents=True, exist_ok=True)
         with open(DEVICE_ID_PATH, "w") as f:
             f.write(str(device_id))

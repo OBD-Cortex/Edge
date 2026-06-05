@@ -97,14 +97,13 @@ def datetime_decoder(dct):
         return datetime.datetime.fromisoformat(val)
     return dct
 
-class CloudPayloadEncoder(json.JSONEncoder):
+def format_datetime(obj):
     """
-    Custom JSON encoder to format datetime objects as ISO-8601 strings for the cloud API.
+    Format datetime objects as ISO-8601 strings for the cloud API.
     """
-    def default(self, obj):
-        if isinstance(obj, (datetime.datetime, datetime.date)):
-            return obj.isoformat()
-        return super().default(obj)
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 def remove_entries(ids):
     """
@@ -167,9 +166,8 @@ def flush_to_cloud():
     try:
         url = f"{config.RAG_API_URL}/api/telemetry"
         
-        # Serialize the payloads list using CloudPayloadEncoder to properly convert
-        # datetime objects into standard ISO-8601 string representations.
-        serialized_payloads = json.dumps(payloads, cls=CloudPayloadEncoder)
+        # Serialize the payloads list using a pure functional encoder
+        serialized_payloads = json.dumps(payloads, default=format_datetime)
         payload_bytes = serialized_payloads.encode("utf-8")
         
         # Sign the serialized payload bytes

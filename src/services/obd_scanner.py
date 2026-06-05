@@ -176,6 +176,8 @@ def _read_dtcs_from_service(bus, service_id):
                 continue
 
             data = msg.data
+            if not data or len(data) == 0:
+                continue
             pci = data[0] & 0xF0
 
             # Single Frame
