@@ -29,3 +29,4 @@ obd-venv/
 .antigravity/
 Testing/
 AGENTS.md
+.keys/

@@ -5,7 +5,9 @@ import datetime
 import requests
 import logging
 from pathlib import Path
-from core.config import BASE_DIR, RAG_API_URL, DEVICE_TOKEN
+from core.config import BASE_DIR
+from core import config
+from core.crypto import sign_payload
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +151,8 @@ def flush_to_cloud():
     Tries to upload all buffered entries to the Central RAG API.
     On success, archives them locally and deletes them from SQLite.
     """
-    if not RAG_API_URL or not DEVICE_TOKEN:
+    if not config.RAG_API_URL or config.DEVICE_ID is None:
+        logger.warning("RAG_API_URL is missing or Device is not provisioned. Skipping flush.")
         return
         
     entries = get_buffered_entries()
@@ -162,15 +165,22 @@ def flush_to_cloud():
     payloads = [payload for _, payload in entries]
     
     try:
-        url = f"{RAG_API_URL}/api/telemetry"
-        headers = {
-            "X-Device-Token": DEVICE_TOKEN,
-            "Content-Type": "application/json"
-        }
+        url = f"{config.RAG_API_URL}/api/telemetry"
         
         # Serialize the payloads list using CloudPayloadEncoder to properly convert
         # datetime objects into standard ISO-8601 string representations.
         serialized_payloads = json.dumps(payloads, cls=CloudPayloadEncoder)
+        payload_bytes = serialized_payloads.encode("utf-8")
+        
+        # Sign the serialized payload bytes
+        signature_hex, timestamp_str = sign_payload(payload_bytes)
+        
+        headers = {
+            "X-Device-ID": str(config.DEVICE_ID),
+            "X-Signature": signature_hex,
+            "X-Timestamp": timestamp_str,
+            "Content-Type": "application/json"
+        }
         
         res = requests.post(url, data=serialized_payloads, headers=headers, timeout=10)
         

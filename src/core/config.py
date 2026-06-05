@@ -14,3 +14,20 @@ SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "60.0"))
 HEARTBEAT_INTERVAL = float(os.getenv("HEARTBEAT_INTERVAL", "1800.0")) # 30 min
 RECONNECT_COOLDOWN = float(os.getenv("RECONNECT_COOLDOWN", "30.0"))   # 30 seconds
 
+def load_device_id():
+    path = BASE_DIR / ".keys" / "device_id"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                val = f.read().strip()
+                if val:
+                    return int(val)
+        except Exception:
+            pass
+    return None
+
+def __getattr__(name):
+    if name == "DEVICE_ID":
+        return load_device_id()
+    raise AttributeError(f"module {__name__} has no attribute {name}")
+

@@ -32,7 +32,7 @@ This system relies on specific embedded hardware to ensure stable logic compatib
 * **Driver:** `mcp2515-can0` (SocketCAN overlay)
 * **Language:** Python 3.13
 * **Virtual Env:** `venv` (Isolated environment)
-* **Libraries:** `python-can`, `python-dotenv`, `requests`
+* **Libraries:** `python-can`, `python-dotenv`, `requests`, `cryptography`
 
 ---
 
@@ -123,6 +123,27 @@ Telemetry captured from the CAN Bus is formatted into standard JSON payloads bef
   "scan_summary": "System healthy. CHECK ENGINE OFF. No confirmed or pending Diagnostic Trouble Codes (DTCs) detected."
 }
 ```
+
+---
+
+## 🔒 Security & Asymmetric Authentication
+
+To ensure secure device communication, the Edge Gateway uses **ECDSA (NIST P-256)** asymmetric cryptography for authentication:
+
+1. **One-Time Provisioning**:
+   - On the first boot, if the gateway is not provisioned, it generates an ECDSA key pair.
+   - It registers with the RAG API via `POST /api/device/provision` using the one-time `DEVICE_TOKEN` in the `X-Device-Token` header.
+   - The gateway uploads its PEM-encoded public key alongside vehicle metadata.
+   - The central API stores the public key and returns a sequential integer `device_id`, which is saved locally to `.keys/device_id`.
+   - The private key is saved with strict `0600` owner-only file permissions to `.keys/private.pem`.
+
+2. **Signed Telemetry Sync**:
+   - For all subsequent telemetry uploads, the gateway signs the batch upload JSON payload using its private key.
+   - The signature is created over the concatenated string `X-Timestamp + payload_bytes` using SHA-256.
+   - Requests are sent with the following headers instead of the static `DEVICE_TOKEN`:
+     - `X-Device-ID`: The assigned integer device ID.
+     - `X-Signature`: The hex-encoded signature.
+     - `X-Timestamp`: The ISO-8601 UTC timestamp of the request.
 
 ---
 

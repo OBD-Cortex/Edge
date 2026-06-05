@@ -32,7 +32,9 @@ from core.can_interface import init_can_bus, shutdown_can_bus
 from services.obd_scanner import ping_ecu, read_vin, run_full_scan
 from services.dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
 from core.telemetry_buffer import init_buffer, save_to_buffer, flush_to_cloud
-from services.cloud_sync import register_device, decode_vin
+from services.cloud_sync import decode_vin
+from core.crypto import is_provisioned
+from services.provisioning import provision_device
 
 def build_telemetry_document(vin, raw_scan):
     """
@@ -117,16 +119,32 @@ def main():
         sys.exit(1)
 
     # 4. Check API Configuration
-    if not RAG_API_URL or not DEVICE_TOKEN:
-        logger.error("Required environment variables RAG_API_URL or DEVICE_TOKEN are missing.")
+    if not RAG_API_URL:
+        logger.error("Required environment variable RAG_API_URL is missing.")
         shutdown_can_bus(bus)
         sys.exit(1)
 
     logger.info(f"Connected to Central API Server: {RAG_API_URL}")
 
-    # 5. NHTSA Decode vehicle info and register device
+    # 5. NHTSA Decode vehicle info
     brand, model, year = decode_vin(vin)
-    register_device(DEVICE_TOKEN, vin, brand, model, year)
+
+    # 6. Provisioning Gate
+    if not is_provisioned():
+        logger.info("Device is not provisioned. Initiating provisioning flow...")
+        if not DEVICE_TOKEN:
+            logger.error("DEVICE_TOKEN is missing. Cannot provision device without a registration token.")
+            shutdown_can_bus(bus)
+            sys.exit(1)
+        try:
+            device_id = provision_device(vin, brand, model, year)
+        except Exception as e:
+            logger.error(f"Provisioning failed: {e}")
+            shutdown_can_bus(bus)
+            sys.exit(1)
+    else:
+        from core.config import DEVICE_ID
+        logger.info(f"Device is already provisioned (Device ID: {DEVICE_ID}). Skipping provisioning.")
 
     # 6. Core Streaming loop
     last_scan_state = None
