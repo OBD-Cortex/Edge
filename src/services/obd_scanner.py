@@ -7,8 +7,9 @@ logger = logging.getLogger(__name__)
 
 def ping_ecu(bus) -> bool:
     """
-    Pings the vehicle's ECU using standard OBD-II Service 01 PID 00 (Supported PIDs).
-    Returns True if any ECU responds (0x7E8–0x7EF), False if it times out/is unreachable.
+    Pings the vehicle's ECU using standard OBD-II Service 01 PID 00.
+    Returns True if any ECU responds (even with a Negative Response Code),
+    confirming the CAN bus and ECU are alive and communicating.
     """
     if not bus:
         return False
@@ -19,10 +20,15 @@ def ping_ecu(bus) -> bool:
     if not success:
         return False
         
-    payloads = recv_isotp_messages(bus, range(0x7E8, 0x7F0), timeout=0.5)
+    # Give the ECU 1.0s to respond in case it is waking up from sleep
+    payloads = recv_isotp_messages(bus, range(0x7E8, 0x7F0), timeout=1.0)
+    
     for ecu_id, payload in payloads.items():
-        if len(payload) >= 3 and payload[0] == 0x41 and payload[1] == 0x00:
-            logger.info(f"Vehicle ECU (0x{ecu_id:03X}) responded to ping.")
+        # Any valid ISO-TP payload confirms the ECU is alive
+        # Positive response starts with 0x41
+        # Negative response starts with 0x7F
+        if len(payload) > 0:
+            logger.info(f"Vehicle ECU (0x{ecu_id:03X}) responded to ping with payload: {payload.hex()}")
             return True
             
     return False

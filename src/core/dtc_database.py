@@ -180,7 +180,6 @@ def lookup_dtc(code):
     # Distinguish generic (0 or 2) vs manufacturer specific (1 or 3)
     if len(code) >= 2:
         is_manufacturer = code[1] in ("1", "3")
-        is_pending = code[1] == "7" # Service 07 DTCs are just standard, but check digit
     else:
         is_manufacturer = False
 

@@ -1,5 +1,6 @@
 import time
 import logging
+from core.config import CAN_PADDING_BYTE
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,8 @@ def send_obd_request(bus, arb_id, data):
     if not bus:
         return False
     try:
-        # Ensure data is padded to 8 bytes
-        padded_data = list(data) + [0x00] * (8 - len(data))
+        # ISO-TP padding dynamically read from .env configuration
+        padded_data = list(data) + [CAN_PADDING_BYTE] * (8 - len(data))
         msg = can.Message(
             arbitration_id=arb_id,
             data=padded_data,
@@ -120,8 +121,8 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
                     # Send Flow Control to the physical request ID (response ID - 8)
                     if not ecu_flow_control_sent.get(ecu_id):
                         fc_id = ecu_id - 8
-                        # Send FC: Clear to Send (0), Block Size (0), STmin (0)
-                        send_obd_request(bus, fc_id, [0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+                        # Send FC: Clear to Send (0), Block Size (0), STmin (0), padded with 0xAA
+                        send_obd_request(bus, fc_id, [0x30, 0x00, 0x00])
                         ecu_flow_control_sent[ecu_id] = True
 
             elif pci_type == 0x20:
