@@ -73,9 +73,9 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
     if not bus:
         return {}
 
-    ecu_payloads = {}   # ecu_id -> bytearray of assembled payload
-    ecu_expected_len = {} # ecu_id -> total expected payload length
-    ecu_flow_control_sent = {} # ecu_id -> bool
+    ecu_payloads = {}
+    ecu_expected_len = {}
+    ecu_flow_control_sent = {}
 
     start_time = time.time()
 
@@ -85,59 +85,104 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
             if elapsed >= timeout:
                 break
 
-            # If we have active ECUs, check if all of them are complete
-            if ecu_expected_len and all(len(ecu_payloads[eid]) >= ecu_expected_len[eid] for eid in ecu_payloads):
-                break
-
             remaining = timeout - elapsed
-            msg = bus.recv(timeout=remaining)
-            if not msg:
-                break
 
-            ecu_id = msg.arbitration_id
-            if ecu_id not in expected_ids:
+            msg = bus.recv(timeout=min(remaining, 0.1))
+            if msg is None:
                 continue
 
-            data = msg.data
+            ecu_id = msg.arbitration_id
+
+            if expected_ids and ecu_id not in expected_ids:
+                continue
+
+            data = list(msg.data)
+
             if not data:
                 continue
 
+            logger.debug(
+                f"RX {hex(ecu_id)} : "
+                + " ".join(f"{b:02X}" for b in data)
+            )
+
             pci_type = data[0] & 0xF0
 
+            # ---------------------------
+            # Single Frame (SF)
+            # ---------------------------
             if pci_type == 0x00:
-                # Single Frame (SF)
-                length = data[0] & 0x0F
-                if length > 0 and len(data) >= 1 + length:
-                    ecu_payloads[ecu_id] = bytearray(data[1:1+length])
-                    ecu_expected_len[ecu_id] = length
 
+                payload_len = data[0] & 0x0F
+
+                if payload_len > 0:
+
+                    ecu_payloads[ecu_id] = bytearray(
+                        data[1:1 + payload_len]
+                    )
+
+                    ecu_expected_len[ecu_id] = payload_len
+
+            # ---------------------------
+            # First Frame (FF)
+            # ---------------------------
             elif pci_type == 0x10:
-                # First Frame (FF)
-                if len(data) >= 2:
-                    length = ((data[0] & 0x0F) << 8) | data[1]
-                    ecu_payloads[ecu_id] = bytearray(data[2:])
-                    ecu_expected_len[ecu_id] = length
 
-                    # Send Flow Control to the physical request ID (response ID - 8)
-                    if not ecu_flow_control_sent.get(ecu_id):
-                        fc_id = ecu_id - 8
-                        # Send FC: Clear to Send (0), Block Size (0), STmin (0), padded with 0xAA
-                        send_obd_request(bus, fc_id, [0x30, 0x00, 0x00])
-                        ecu_flow_control_sent[ecu_id] = True
+                if len(data) < 2:
+                    continue
 
+                total_len = ((data[0] & 0x0F) << 8) | data[1]
+
+                ecu_payloads[ecu_id] = bytearray(data[2:])
+                ecu_expected_len[ecu_id] = total_len
+
+                if not ecu_flow_control_sent.get(ecu_id):
+
+                    fc_id = ecu_id - 0x08
+
+                    time.sleep(0.01)
+
+                    send_obd_request(
+                        bus,
+                        fc_id,
+                        [0x30, 0x00, 0x00]
+                    )
+
+                    ecu_flow_control_sent[ecu_id] = True
+
+            # ---------------------------
+            # Consecutive Frame (CF)
+            # ---------------------------
             elif pci_type == 0x20:
-                # Consecutive Frame (CF)
+
                 if ecu_id in ecu_payloads:
+
                     ecu_payloads[ecu_id].extend(data[1:])
+
+            # Stop if all active ISO-TP messages are complete
+            if ecu_expected_len:
+
+                complete = True
+
+                for eid in ecu_expected_len:
+
+                    if len(ecu_payloads.get(eid, b"")) < ecu_expected_len[eid]:
+                        complete = False
+                        break
+
+                if complete:
+                    break
 
     except Exception as e:
         logger.error(f"[CAN Bus] Error receiving ISO-TP frames: {e}")
 
-    # Clean up and slice the payloads to the exact expected lengths
     final_payloads = {}
+
     for eid, payload in ecu_payloads.items():
-        exp_len = ecu_expected_len.get(eid, len(payload))
-        final_payloads[eid] = bytes(payload[:exp_len])
+
+        expected_len = ecu_expected_len.get(eid, len(payload))
+
+        final_payloads[eid] = bytes(payload[:expected_len])
 
     return final_payloads
 
