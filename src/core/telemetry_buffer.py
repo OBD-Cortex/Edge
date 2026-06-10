@@ -73,21 +73,7 @@ def remove_entries(ids):
     except Exception as e:
         logger.error(f"SQLite failed to delete entries: {e}")
 
-def archive_entries(entries):
-    """Saves successfully uploaded entries to a backup JSON file."""
-    if not entries:
-        return
-    try:
-        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        archive_file = ARCHIVE_DIR / f"{timestamp_str}.json"
-        
-        with open(archive_file, "w") as f:
-            json.dump(entries, f, indent=2)
-            
-        logger.info(f"Saved {len(entries)} snapshots to backup: {archive_file.name}")
-    except Exception as e:
-        logger.error(f"Failed to archive snapshots: {e}")
+
 
 def flush_to_cloud():
     """Tries to upload all buffered entries to the Central RAG API."""
@@ -119,7 +105,6 @@ def flush_to_cloud():
         res = requests.post(f"{RAG_API_URL}/api/telemetry", data=payload_bytes, headers=headers, timeout=10)
         
         if res.status_code == 200:
-            archive_entries(payloads)
             remove_entries(uploaded_ids)
             logger.info(f"Successfully flushed {len(uploaded_ids)} entries.")
         else:

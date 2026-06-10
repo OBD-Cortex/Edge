@@ -1,4 +1,3 @@
-from core.dtc_database import lookup_dtc
 
 def decode_dtc_bytes(b1, b2):
     """
@@ -14,10 +13,9 @@ def decode_dtc_bytes(b1, b2):
     return f"{prefix}{digit2}{b1 & 0x0F:X}{(b2 & 0xF0) >> 4:X}{b2 & 0x0F:X}"
 
 def enrich_dtc(code):
-    """Enriches a string DTC code with metadata."""
+    """Enriches a string DTC code with metadata. Offloads heavy lifting to the cloud."""
     code = code.upper().strip()
-    description, severity, category = lookup_dtc(code)
-    return {"code": code, "description": description, "severity": severity, "category": category}
+    return {"code": code, "description": "Pending Cloud Lookup", "severity": "unknown", "category": "unknown"}
 
 def build_scan_summary(mil_active, confirmed_dtcs, pending_dtcs):
     """Builds a natural language summary optimized for LLM consumption."""

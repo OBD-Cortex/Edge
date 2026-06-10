@@ -1,0 +1,21 @@
+[Unit]
+Description=OBD-Cortex Edge Device Logger
+After=network.target network-online.target can0.service
+Wants=network-online.target
+
+[Service]
+# Change 'pi' to your actual Raspberry Pi username if different
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Edge
+Environment="PATH=/home/pi/Edge/venv/bin"
+
+# The core daemon execution
+ExecStart=/home/pi/Edge/venv/bin/python src/main.py
+
+# Auto-restart if the script crashes (e.g. CAN interface goes down temporarily)
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

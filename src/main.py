@@ -23,7 +23,6 @@ from core.can_interface import init_can_bus, shutdown_can_bus
 from services.obd_scanner import ping_ecu, read_vin, run_full_scan
 from services.dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
 from core.telemetry_buffer import init_buffer, save_to_buffer, flush_to_cloud
-from services.cloud_sync import decode_vin
 from core.crypto import is_provisioned
 from services.provisioning import provision_device
 
@@ -88,8 +87,6 @@ def main():
 
     logger.info(f"Connected to Central API Server: {RAG_API_URL}")
 
-    brand, model, year = decode_vin(vin)
-
     if not is_provisioned():
         logger.info("Device not provisioned. Initiating provisioning flow...")
         if not DEVICE_TOKEN:
@@ -97,7 +94,7 @@ def main():
             shutdown_can_bus(bus)
             sys.exit(1)
         try:
-            provision_device(vin, brand, model, year)
+            provision_device(vin, "Unknown", "Unknown", "Unknown")
         except Exception as e:
             logger.error(f"Provisioning failed: {e}")
             shutdown_can_bus(bus)

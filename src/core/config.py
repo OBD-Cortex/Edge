@@ -10,7 +10,6 @@ DEVICE_TOKEN = os.getenv("DEVICE_TOKEN")
 
 SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "60.0"))
 HEARTBEAT_INTERVAL = float(os.getenv("HEARTBEAT_INTERVAL", "1800.0"))
-RECONNECT_COOLDOWN = float(os.getenv("RECONNECT_COOLDOWN", "30.0"))
 
 # ISO-TP Padding byte (0xAA or 0x55)
 CAN_PADDING_BYTE = int(os.getenv("CAN_PADDING_BYTE", "0xAA"), 16)
