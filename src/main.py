@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Embedded-Automotive-Edge Gateway Logger
+Edge Gateway Logger
 OBD-Cortex IoT Telemetry Streamer for Raspberry Pi 4.
 
 Orchestrates CAN bus reading, DTC diagnostics, local buffering, and cloud syncing.

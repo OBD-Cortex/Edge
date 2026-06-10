@@ -1,5 +1,5 @@
-# Embedded-Automotive-Edge
-# Embedded-Automotive-Edge
+# Edge
+# Edge
 ### The IoT Gateway for [OBD-Cortex]
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python)
@@ -7,7 +7,7 @@
 ![Protocol](https://img.shields.io/badge/Protocol-CAN%20Bus%20%2F%20OBDII-orange)
 ![Database](https://img.shields.io/badge/Database-MongoDB%20Atlas-green?logo=mongodb)
 
-**Embedded-Automotive-Edge** is the hardware interface layer of the **OBD-Cortex** diagnostics platform. It runs on a Raspberry Pi 4 connected to a vehicle's OBD-II port, capturing real-time telemetry (RPM, Speed, Temperatures, DTCs) via the CAN Bus protocol and streaming it to the cloud for analysis by the **[Hybrid-Automotive-RAG](https://github.com/YOUR_USERNAME/Hybrid-Automotive-RAG)** AI system.
+**Edge** is the hardware interface layer of the **OBD-Cortex** diagnostics platform. It runs on a Raspberry Pi 4 connected to a vehicle's OBD-II port, capturing real-time telemetry (RPM, Speed, Temperatures, DTCs) via the CAN Bus protocol and streaming it to the cloud for analysis by the **[Backend](https://github.com/YOUR_USERNAME/Backend)** AI system.
 
 ---
 
