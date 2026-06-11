@@ -30,14 +30,14 @@ def main():
     print("==================================================")
     
     # Verify environment variables were loaded
-    edge_service_url = os.getenv("EDGE_API_URL") or os.getenv("EDGE_SERVICE_URL")
+    edge_service_url = os.getenv("EDGE_SERVICE_URL")
     device_token = os.getenv("DEVICE_TOKEN")
     
     print(f"    Target Service URL: {edge_service_url}")
     print(f"    Device Token:       {device_token[:6] + '...' if device_token else '[Not Set]'}")
     
     if not edge_service_url:
-        print("[ERROR] EDGE_API_URL or EDGE_SERVICE_URL environment variable is not set.")
+        print("[ERROR] EDGE_SERVICE_URL environment variable is not set.")
         return
     if not device_token:
         print("[ERROR] DEVICE_TOKEN environment variable is not set. Cannot provision.")
