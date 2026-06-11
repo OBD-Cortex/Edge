@@ -47,14 +47,14 @@ def main():
     print(f"\n[2] Device Registration Test:")
     
     # Verify environment variables were loaded
-    rag_api_url = os.getenv("RAG_API_URL")
+    edge_service_url = os.getenv("EDGE_SERVICE_URL")
     device_token = os.getenv("DEVICE_TOKEN")
     
-    print(f"    Target RAG API URL: {rag_api_url}")
+    print(f"    Target EDGE_SERVICE_URL: {edge_service_url}")
     print(f"    Device Token:       {device_token}")
     
-    if not rag_api_url:
-        print("[!] Error: RAG_API_URL environment variable is not set.")
+    if not edge_service_url:
+        print("[!] Error: EDGE_SERVICE_URL environment variable is not set.")
         return
     if not device_token:
         print("[!] Error: DEVICE_TOKEN environment variable is not set. Cannot provision.")

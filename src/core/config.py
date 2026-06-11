@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-RAG_API_URL = os.getenv("RAG_API_URL")
+EDGE_SERVICE_URL = os.getenv("EDGE_SERVICE_URL")
 DEVICE_TOKEN = os.getenv("DEVICE_TOKEN")
 
 SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "60.0"))

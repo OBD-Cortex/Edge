@@ -30,14 +30,14 @@ class TestSignedFlush(unittest.TestCase):
         self.original_crypto_keys_dir = core.crypto.KEYS_DIR
         self.original_secret_path = core.crypto.SECRET_PATH
         self.original_db_path = core.telemetry_buffer.SQLITE_DB_PATH
-        self.original_api_url = core.config.RAG_API_URL
+        self.original_api_url = core.config.EDGE_SERVICE_URL
         
         # Inject test configs
         core.config.BASE_DIR = self.test_dir
         core.crypto.KEYS_DIR = self.test_keys_dir
         core.crypto.SECRET_PATH = self.test_keys_dir / "device_secret"
         core.telemetry_buffer.SQLITE_DB_PATH = self.test_db_path
-        core.config.RAG_API_URL = "http://mockapi.local"
+        core.config.EDGE_SERVICE_URL = "http://mockapi.local"
         
         # Clean up test directories
         if self.test_dir.exists():
@@ -58,7 +58,7 @@ class TestSignedFlush(unittest.TestCase):
         core.crypto.KEYS_DIR = self.original_crypto_keys_dir
         core.crypto.SECRET_PATH = self.original_secret_path
         core.telemetry_buffer.SQLITE_DB_PATH = self.original_db_path
-        core.config.RAG_API_URL = self.original_api_url
+        core.config.EDGE_SERVICE_URL = self.original_api_url
         
         # Clean up test directories
         if self.test_dir.exists():

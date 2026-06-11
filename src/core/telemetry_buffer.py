@@ -3,7 +3,7 @@ import sqlite3
 import datetime
 import requests
 import logging
-from core.config import BASE_DIR, RAG_API_URL, DEVICE_ID
+from core.config import BASE_DIR, EDGE_SERVICE_URL, DEVICE_ID
 from core.crypto import sign_payload
 
 logger = logging.getLogger(__name__)
@@ -77,8 +77,8 @@ def remove_entries(ids):
 
 def flush_to_cloud():
     """Tries to upload all buffered entries to the Central RAG API."""
-    if not RAG_API_URL or DEVICE_ID is None:
-        logger.warning("RAG_API_URL missing or Device not provisioned. Skipping flush.")
+    if not EDGE_SERVICE_URL or DEVICE_ID is None:
+        logger.warning("EDGE_SERVICE_URL missing or Device not provisioned. Skipping flush.")
         return
         
     entries = get_buffered_entries()
@@ -102,7 +102,7 @@ def flush_to_cloud():
             "Content-Type": "application/json"
         }
         
-        res = requests.post(f"{RAG_API_URL}/api/telemetry", data=payload_bytes, headers=headers, timeout=10)
+        res = requests.post(f"{EDGE_SERVICE_URL}/api/telemetry", data=payload_bytes, headers=headers, timeout=10)
         
         if res.status_code == 200:
             remove_entries(uploaded_ids)

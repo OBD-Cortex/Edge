@@ -84,7 +84,7 @@ class TestTelemetryFlow(unittest.TestCase):
 
         # Mock config in core.telemetry_buffer
         import core.telemetry_buffer
-        core.telemetry_buffer.config.RAG_API_URL = "http://mockapi.local"
+        core.telemetry_buffer.config.EDGE_SERVICE_URL = "http://mockapi.local"
         core.telemetry_buffer.config.DEVICE_ID = 99
 
         # 1. Build and store multiple mock documents

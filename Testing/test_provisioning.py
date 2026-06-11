@@ -24,7 +24,7 @@ class TestProvisioning(unittest.TestCase):
         self.original_crypto_key_path = core.crypto.SECRET_PATH
         self.original_prov_keys_dir = services.provisioning.KEYS_DIR
         self.original_prov_device_id_path = services.provisioning.DEVICE_ID_PATH
-        self.original_api_url = services.provisioning.RAG_API_URL
+        self.original_api_url = services.provisioning.EDGE_SERVICE_URL
         self.original_token = services.provisioning.DEVICE_TOKEN
         
         # Inject test directories
@@ -33,7 +33,7 @@ class TestProvisioning(unittest.TestCase):
         core.crypto.SECRET_PATH = self.test_keys_dir / "device_secret"
         services.provisioning.KEYS_DIR = self.test_keys_dir
         services.provisioning.DEVICE_ID_PATH = self.test_keys_dir / "device_id"
-        services.provisioning.RAG_API_URL = "http://mock-rag-api.local"
+        services.provisioning.EDGE_SERVICE_URL = "http://mock-rag-api.local"
         services.provisioning.DEVICE_TOKEN = "TEST_TOKEN"
         
         # Clean up any leftover test directories
@@ -47,7 +47,7 @@ class TestProvisioning(unittest.TestCase):
         core.crypto.SECRET_PATH = self.original_crypto_key_path
         services.provisioning.KEYS_DIR = self.original_prov_keys_dir
         services.provisioning.DEVICE_ID_PATH = self.original_prov_device_id_path
-        services.provisioning.RAG_API_URL = self.original_api_url
+        services.provisioning.EDGE_SERVICE_URL = self.original_api_url
         services.provisioning.DEVICE_TOKEN = self.original_token
         
         # Clean up test directories

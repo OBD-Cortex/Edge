@@ -34,7 +34,7 @@ Create a `.env` file in the root directory:
 
 ```env
 # The endpoint for your central Edge_Service gateway
-RAG_API_URL=https://edge.yourdomain.com
+EDGE_SERVICE_URL=https://edge.yourdomain.com
 
 # Device token generated via the Admin Dashboard
 DEVICE_TOKEN=YOUR_HEX_DEVICE_TOKEN_HERE

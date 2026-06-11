@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core.config import RAG_API_URL, DEVICE_TOKEN, SCAN_INTERVAL, HEARTBEAT_INTERVAL
+from core.config import EDGE_SERVICE_URL, DEVICE_TOKEN, SCAN_INTERVAL, HEARTBEAT_INTERVAL
 from core.can_interface import init_can_bus, shutdown_can_bus
 from services.obd_scanner import ping_ecu, read_vin, run_full_scan
 from services.dtc_sanitizer import enrich_dtc, build_scan_summary, has_state_changed
@@ -80,12 +80,12 @@ def main():
         shutdown_can_bus(bus)
         sys.exit(1)
 
-    if not RAG_API_URL:
-        logger.error("Required environment variable RAG_API_URL is missing.")
+    if not EDGE_SERVICE_URL:
+        logger.error("Required environment variable EDGE_SERVICE_URL is missing.")
         shutdown_can_bus(bus)
         sys.exit(1)
 
-    logger.info(f"Connected to Central API Server: {RAG_API_URL}")
+    logger.info(f"Connected to Central API Server: {EDGE_SERVICE_URL}")
 
     if not is_provisioned():
         logger.info("Device not provisioned. Initiating provisioning flow...")

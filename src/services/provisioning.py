@@ -1,6 +1,6 @@
 import logging
 import requests
-from core.config import BASE_DIR, RAG_API_URL, DEVICE_TOKEN
+from core.config import BASE_DIR, EDGE_SERVICE_URL, DEVICE_TOKEN
 from core.crypto import generate_secret
 
 logger = logging.getLogger(__name__)
@@ -15,13 +15,13 @@ def provision_device(vin: str, brand: str, model: str, year: str) -> int:
     2. Sends the secret and vehicle info to the central API.
     3. Saves the returned device_id on success.
     """
-    if not RAG_API_URL or not DEVICE_TOKEN:
-        raise RuntimeError("RAG_API_URL or DEVICE_TOKEN missing. Unable to provision.")
+    if not EDGE_SERVICE_URL or not DEVICE_TOKEN:
+        raise RuntimeError("EDGE_SERVICE_URL or DEVICE_TOKEN missing. Unable to provision.")
 
     logger.info("Starting one-time device provisioning flow...")
     secret = generate_secret()
 
-    url = f"{RAG_API_URL}/api/device/provision"
+    url = f"{EDGE_SERVICE_URL}/api/device/provision"
     headers = {"X-Device-Token": DEVICE_TOKEN, "Content-Type": "application/json"}
     payload = {"device_secret": secret, "vin": vin, "brand": brand, "model": model, "year": year}
     
