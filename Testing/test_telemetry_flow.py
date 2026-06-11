@@ -103,7 +103,7 @@ class TestTelemetryFlow(unittest.TestCase):
         # 2. Flush to cloud
         flush_to_cloud()
         
-        # Verify requests.post was called with the correct args
+        # Verify httpx.post was called with the correct args
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         self.assertEqual(args[0], "http://mockapi.local/api/telemetry")

@@ -82,7 +82,7 @@ class TestSignedFlush(unittest.TestCase):
         # 2. Trigger flush
         core.telemetry_buffer.flush_to_cloud()
         
-        # Verify requests.post was called
+        # Verify httpx.post was called
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         

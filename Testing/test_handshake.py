@@ -19,7 +19,6 @@ except ImportError:
     pass
 
 # Now import the correctly separated services
-from services.cloud_sync import decode_vin
 from services.provisioning import provision_device
 
 def main():
@@ -27,46 +26,36 @@ def main():
     valid_test_vin = "1FA6P8CF0J5100001" 
     
     print("==================================================")
-    print("Starting Embedded Edge VIN Decoding & Sync Test")
+    print("Starting Embedded Edge Handshake & Sync Test")
     print("==================================================")
     
-    # 1. Test NHTSA API Decoding (Component 2.4)
-    brand, model, year = decode_vin(valid_test_vin)
-    print(f"\n[1] NHTSA Decoding Result:")
-    print(f"    VIN:   {valid_test_vin}")
-    print(f"    Brand: {brand}")
-    print(f"    Model: {model}")
-    print(f"    Year:  {year}")
-    
-    if brand == "Unknown" and model == "Unknown":
-        print("[!] Warning: NHTSA API query failed or returned 'Unknown'. Ensure your Edge device has internet access.")
-    else:
-        print("[✓] Successfully decoded VIN locally!")
-
-    # 2. Test Zero-Trust Provisioning Handshake (Component 2.3)
-    print(f"\n[2] Device Registration Test:")
-    
     # Verify environment variables were loaded
-    edge_service_url = os.getenv("EDGE_SERVICE_URL")
+    edge_service_url = os.getenv("EDGE_API_URL") or os.getenv("EDGE_SERVICE_URL")
     device_token = os.getenv("DEVICE_TOKEN")
     
-    print(f"    Target EDGE_SERVICE_URL: {edge_service_url}")
-    print(f"    Device Token:       {device_token}")
+    print(f"    Target Service URL: {edge_service_url}")
+    print(f"    Device Token:       {device_token[:6] + '...' if device_token else '[Not Set]'}")
     
     if not edge_service_url:
-        print("[!] Error: EDGE_SERVICE_URL environment variable is not set.")
+        print("[ERROR] EDGE_API_URL or EDGE_SERVICE_URL environment variable is not set.")
         return
     if not device_token:
-        print("[!] Error: DEVICE_TOKEN environment variable is not set. Cannot provision.")
+        print("[ERROR] DEVICE_TOKEN environment variable is not set. Cannot provision.")
         return
 
     try:
         # Note: provision_device relies on the config.py pulling the env vars automatically
-        device_id = provision_device(vin=valid_test_vin, brand=brand, model=model, year=year)
-        print(f"\n[✓] TEST PASSED: Handshake successful! The Backend assigned Device ID: {device_id}")
+        # VIN decoding is handled server-side by the Edge-Service, so we register with default metadata.
+        device_id = provision_device(
+            vin=valid_test_vin, 
+            brand="Unknown", 
+            model="Unknown", 
+            year="Unknown"
+        )
+        print(f"\n[OK] TEST PASSED: Handshake successful! The Backend assigned Device ID: {device_id}")
         print(f"    Check the '.keys' folder to see the newly generated device_secret and device_id files.")
     except Exception as e:
-        print(f"\n[✗] TEST FAILED: Unable to register the device. {e}")
+        print(f"\n[ERROR] TEST FAILED: Unable to register the device. {e}")
 
 if __name__ == "__main__":
     main()
