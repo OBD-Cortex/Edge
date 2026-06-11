@@ -4,6 +4,7 @@ import shutil
 import unittest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+import httpx
 
 # Adjust sys.path to find src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
@@ -54,7 +55,7 @@ class TestProvisioning(unittest.TestCase):
         if self.test_dir.exists():
             shutil.rmtree(self.test_dir)
 
-    @patch('requests.post')
+    @patch('httpx.post')
     def test_provision_success(self, mock_post):
         # Mock successful API response
         mock_response = MagicMock()
@@ -93,12 +94,18 @@ class TestProvisioning(unittest.TestCase):
         self.assertEqual(kwargs["json"]["vin"], "12345678901234567")
         self.assertTrue("device_secret" in kwargs["json"])
 
-    @patch('requests.post')
+    @patch('httpx.post')
     def test_provision_http_error(self, mock_post):
         # Mock failed HTTP code
         mock_response = MagicMock()
         mock_response.status_code = 403
         mock_response.text = "Forbidden"
+        # Raise HTTPStatusError when raise_for_status is called
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            message="Forbidden",
+            request=MagicMock(),
+            response=mock_response
+        )
         mock_post.return_value = mock_response
         
         with self.assertRaises(RuntimeError) as context:
@@ -109,11 +116,11 @@ class TestProvisioning(unittest.TestCase):
                 year="2018"
             )
             
-        self.assertIn("Server rejected provisioning request", str(context.exception))
+        self.assertIn("Network error during provisioning", str(context.exception))
         # Ensure device_id wasn't created
         self.assertFalse(services.provisioning.DEVICE_ID_PATH.exists())
 
-    @patch('requests.post')
+    @patch('httpx.post')
     def test_provision_missing_device_id_in_response(self, mock_post):
         # Mock 200 response but missing device_id
         mock_response = MagicMock()
@@ -129,7 +136,7 @@ class TestProvisioning(unittest.TestCase):
                 year="2018"
             )
             
-        self.assertIn("response did not contain 'device_id'", str(context.exception))
+        self.assertIn("Provisioning response missing 'device_id'", str(context.exception))
         self.assertFalse(services.provisioning.DEVICE_ID_PATH.exists())
 
 if __name__ == "__main__":

@@ -71,7 +71,7 @@ class TestTelemetryFlow(unittest.TestCase):
         except TypeError as e:
             self.fail(f"Serialization failed with: {e}")
 
-    @patch('requests.post')
+    @patch('httpx.post')
     @patch('core.telemetry_buffer.sign_payload')
     def test_flush_to_cloud(self, mock_sign, mock_post):
         # Configure mocked response
@@ -115,7 +115,7 @@ class TestTelemetryFlow(unittest.TestCase):
         })
         
         # Verify the payloads JSON sent matches our buffered entries (both are lists)
-        payloads_sent = json.loads(kwargs["data"])
+        payloads_sent = json.loads(kwargs["content"])
         self.assertEqual(len(payloads_sent), 2)
         self.assertEqual(payloads_sent[0]["system_status"], "healthy")
         self.assertEqual(payloads_sent[1]["system_status"], "critical")

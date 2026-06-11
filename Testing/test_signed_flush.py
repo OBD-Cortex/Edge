@@ -64,7 +64,7 @@ class TestSignedFlush(unittest.TestCase):
         if self.test_dir.exists():
             shutil.rmtree(self.test_dir)
 
-    @patch('requests.post')
+    @patch('httpx.post')
     def test_signed_flush_to_cloud(self, mock_post):
         # Configure mocked response
         mock_response = MagicMock()
@@ -99,7 +99,7 @@ class TestSignedFlush(unittest.TestCase):
         # Verify signature is cryptographically valid against the payloads
         signature_hex = headers["X-Signature"]
         timestamp_str = headers["X-Timestamp"]
-        payload_bytes = kwargs["data"].encode("utf-8")
+        payload_bytes = kwargs["content"]
         
         signed_data = timestamp_str.encode('utf-8') + payload_bytes
         

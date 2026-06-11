@@ -1,5 +1,5 @@
 import logging
-import requests
+import httpx
 from core.config import BASE_DIR, EDGE_SERVICE_URL, DEVICE_TOKEN
 from core.crypto import generate_secret
 
@@ -27,7 +27,7 @@ def provision_device(vin: str, brand: str, model: str, year: str) -> int:
     
     try:
         logger.info(f"Sending provisioning request to {url}...")
-        res = requests.post(url, json=payload, headers=headers, timeout=10)
+        res = httpx.post(url, json=payload, headers=headers, timeout=10)
         res.raise_for_status()
             
         device_id = res.json().get("device_id")
@@ -40,6 +40,6 @@ def provision_device(vin: str, brand: str, model: str, year: str) -> int:
         logger.info(f"[✓] Device successfully provisioned. Assigned Device ID: {device_id}")
         return int(device_id)
         
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         logger.error(f"[!] Network error during device provisioning: {e}")
         raise RuntimeError(f"Network error during provisioning: {e}")

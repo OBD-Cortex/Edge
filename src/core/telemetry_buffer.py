@@ -1,7 +1,7 @@
 import json
 import sqlite3
 import datetime
-import requests
+import httpx
 import logging
 from core.config import BASE_DIR, EDGE_SERVICE_URL, DEVICE_ID
 from core.crypto import sign_payload
@@ -102,7 +102,7 @@ def flush_to_cloud():
             "Content-Type": "application/json"
         }
         
-        res = requests.post(f"{EDGE_SERVICE_URL}/api/telemetry", data=payload_bytes, headers=headers, timeout=10)
+        res = httpx.post(f"{EDGE_SERVICE_URL}/api/telemetry", content=payload_bytes, headers=headers, timeout=10)
         
         if res.status_code == 200:
             remove_entries(uploaded_ids)
