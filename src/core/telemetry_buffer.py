@@ -77,38 +77,57 @@ def remove_entries(ids):
 
 
 def flush_to_cloud():
-    """Tries to upload all buffered entries to the Central RAG API."""
+    """
+    Tries to upload all buffered entries to the Central RAG API.
+    Returns:
+      "REPROVISION_REQUIRED" if the server responds with HTTP 403,
+       indicating the on-disk HMAC secret is stale after a token rotation.
+      None in all other cases (success or non-auth errors).
+    """
     if not config.EDGE_SERVICE_URL or config.DEVICE_ID is None:
         logger.warning("EDGE_SERVICE_URL missing or Device not provisioned. Skipping flush.")
-        return
-        
+        return None
+
     entries = get_buffered_entries()
     if not entries:
-        return
+        return None
 
     logger.info(f"Flushing {len(entries)} buffered entries to Cloud API...")
-    
+
     uploaded_ids = [e[0] for e in entries]
     payloads = [e[1] for e in entries]
-    
+
     try:
         serialized_payloads = json.dumps(payloads, default=format_datetime)
         payload_bytes = serialized_payloads.encode("utf-8")
         signature_hex, timestamp_str = sign_payload(payload_bytes)
-        
+
         headers = {
             "X-Device-ID": str(config.DEVICE_ID),
             "X-Signature": signature_hex,
             "X-Timestamp": timestamp_str,
             "Content-Type": "application/json"
         }
-        
+
         res = httpx.post(f"{config.EDGE_SERVICE_URL}/api/telemetry", content=payload_bytes, headers=headers, timeout=10)
-        
+
         if res.status_code == 200:
             remove_entries(uploaded_ids)
             logger.info(f"Successfully flushed {len(uploaded_ids)} entries.")
-        else:
-            logger.error(f"Failed to batch upload buffered entries: API returned {res.status_code}: {res.text}")
+            return None
+
+        if res.status_code == 403:
+            # HMAC secret on disk does not match the server's stored secret.
+            # This occurs after a device token is rotated in the admin dashboard.
+            # Signal the main loop to wipe keys and re-provision automatically.
+            logger.error("[!] Server returned HTTP 403: HMAC secret is stale. "
+                         "Triggering automatic re-provisioning.")
+            return "REPROVISION_REQUIRED"
+
+        logger.error(f"Failed to batch upload buffered entries: API returned {res.status_code}: {res.text}")
+        return None
+
     except Exception as e:
         logger.error(f"Failed to batch upload buffered entries: {e}")
+        return None
+

@@ -1,7 +1,11 @@
 [Unit]
 Description=OBD-Cortex Edge Device Logger
-After=network.target network-online.target can0.service
+Documentation=https://github.com/OBD-Cortex/Edge
+After=network.target network-online.target CanMonitor.service
 Wants=network-online.target
+# Hard dependency: Edge logger cannot function without the CAN bus monitor.
+# If CanMonitor.service stops, this unit stops too automatically.
+Requires=CanMonitor.service
 
 [Service]
 # Change 'pi' to your actual Raspberry Pi username if different
@@ -13,7 +17,7 @@ Environment="PATH=/home/pi/Edge/venv/bin"
 # The core daemon execution
 ExecStart=/home/pi/Edge/venv/bin/python src/main.py
 
-# Auto-restart if the script crashes (e.g. CAN interface goes down temporarily)
+# Auto-restart if the script crashes (e.g. transient cloud outage)
 Restart=always
 RestartSec=10
 

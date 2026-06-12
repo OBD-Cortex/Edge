@@ -1,57 +1,128 @@
 # OBD-Cortex: Edge Device Controller
 
-The **Edge Device Controller** is a lightweight Python daemon designed to run persistently on Raspberry Pi 4 hardware connected to a vehicle's OBD-II port. 
+The **Edge Device Controller** is a production Python daemon running on Raspberry Pi 4 hardware connected to a vehicle's OBD-II port via an MCP2515 CAN Bus HAT.
+
+---
+
+## Service Architecture
+
+Two independent systemd units work together:
+
+```
+CanMonitor.service          (foundational -- starts first)
+  |-- ExecStartPre: ip link set can0 up type can bitrate 500000
+  |-- Polls all ECU-supported Mode 01 live PIDs every second
+  |-- Writes JSON records to logs/vehicle_data.log (rotating, 10 MB x 5)
+  |-- Streams columnar output to journald
+  v
+Edge.service                (depends on CanMonitor -- starts after)
+  |-- Requires=CanMonitor.service
+  |-- Full OBD-II diagnostic scan: DTCs + live PIDs + freeze frame
+  |-- HMAC-signed batch telemetry upload to Edge-Service
+  |-- Automatic re-provisioning on HTTP 403 (stale secret self-healing)
+```
+
+**CanMonitor.service owns the CAN bus.** If it stops, Edge.service stops automatically via `Requires=`. CanMonitor can run alone on a bare Pi with no cloud setup.
 
 ---
 
 ## Key Architectural Details
 
-1.  **CAN-Bus Telemetry Acquisition:** Interfaces directly with physical OBD-II hardware via the `python-can` library to query and assemble real-time vehicle RPM, Speed, and Diagnostic Trouble Codes (DTCs).
-2.  **Offline Resilience:** Uses a local SQLite caching layer (`src/core/telemetry_buffer.py`). If the vehicle drives through cellular dead zones, telemetry snapshots (up to 100 per batch) are safely buffered on the SD card and automatically flushed once connectivity to the gateway is restored.
-3.  **Cryptographic Signatures:** Payloads are signed using a local symmetric device key (`src/core/crypto.py`) concatenated with a UTC ISO-8601 timestamp. The `Edge-Service` verifies signatures to prevent telemetry spoofing.
-4.  **No Version Pins:** To ensure you always run the latest stable libraries in production, `requirements.txt` does not restrict package versions. They will resolve to the latest stable packages upon deployment.
+1. **CAN-Bus Telemetry Acquisition:** Interfaces directly with physical OBD-II hardware via the `python-can` library. Queries Mode 01 (live PIDs), Mode 02 (freeze frame), Mode 03 (confirmed DTCs), and Mode 07 (pending DTCs).
+2. **Full Live PID Coverage:** Dynamically probes the ECU's supported PID bitmask (PIDs 0x00/0x20/0x40/0x60) and polls all available sensors: RPM, speed, coolant temp, intake temp, throttle, MAF, fuel trims, oil temp, ECU voltage, barometric pressure, and more.
+3. **Local VIN Decode:** The 17-character VIN is decoded entirely offline via a built-in WMI lookup table (`src/core/vin_decoder.py`). Brand, model year, and region are resolved without any network call and are included in every telemetry document.
+4. **Offline Resilience:** Uses a local SQLite caching layer. Telemetry snapshots are buffered on the SD card and automatically flushed once cloud connectivity is restored.
+5. **Cryptographic Signatures:** Payloads are signed using a local symmetric HMAC key. The Edge-Service verifies signatures to prevent spoofing.
+6. **Automatic Re-Provisioning:** If the server returns HTTP 403 (stale HMAC secret after a device token rotation), the daemon automatically clears stale keys and re-provisions in-process. The operator only needs to update `DEVICE_TOKEN` in `.env` and restart once.
+7. **No Version Pins:** `requirements.txt` uses latest stable packages. Appropriate for production deployments on controlled hardware.
 
 ---
 
 ## Repository Structure
 
-*   `src/core/can_interface.py`: Handles SocketCAN bus channels, flow control, and multi-frame ISO-TP assembly.
-*   `src/core/crypto.py`: Enforces filesystem safety (0o700/0o600) on cryptographic keys and signs outgoing payloads.
-*   `src/core/telemetry_buffer.py`: Local SQLite cache and batch flush client.
-*   `src/services/dtc_sanitizer.py`: Decodes hex trouble codes (SAE definitions) and compiles natural language summaries for the LLM.
-*   `src/services/obd_scanner.py`: Controls scanner loop, ECU handshakes, and VIN queries.
-*   `systemd/`: Daemon templates to configure auto-booting on system startup.
+- `src/main.py`: Diagnostic daemon entry point.
+- `src/vehicle_monitor.py`: Standalone live PID polling daemon (run by CanMonitor.service).
+- `src/core/can_interface.py`: SocketCAN channel management, ISO-TP multi-frame assembly, flow control.
+- `src/core/config.py`: Environment variable loader.
+- `src/core/crypto.py`: HMAC key management, payload signing, filesystem permission enforcement.
+- `src/core/telemetry_buffer.py`: SQLite-backed offline buffer and batch flush client.
+- `src/core/vin_decoder.py`: Offline WMI lookup table and SAE J1979 year character decoder.
+- `src/services/dtc_sanitizer.py`: DTC byte decoder and natural language summary builder.
+- `src/services/obd_scanner.py`: Mode 01/02/03/07 scanner, PID decoder table, freeze frame reader.
+- `src/services/provisioning.py`: Device provisioning handshake and key management.
+- `systemd/CanMonitor.service`: Foundational CAN bus + live data service.
+- `systemd/Edge.service`: Diagnostic and telemetry upload service.
+
+---
+
+## Deployment (Raspberry Pi)
+
+### 1. Install dependencies
+
+```bash
+cd /home/pi/Edge
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+# Edit .env: set EDGE_SERVICE_URL and DEVICE_TOKEN
+```
+
+### 3. Install and enable services
+
+```bash
+sudo cp systemd/CanMonitor.service /etc/systemd/system/
+sudo cp systemd/Edge.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable CanMonitor.service Edge.service
+sudo systemctl start CanMonitor.service
+# Edge.service starts automatically once CanMonitor is active
+```
+
+### 4. Monitor logs
+
+```bash
+# Live PID stream
+journalctl -u CanMonitor.service -f
+
+# Diagnostic and cloud sync logs
+journalctl -u Edge.service -f
+
+# Structured JSON data file
+tail -f /home/pi/Edge/logs/vehicle_data.log
+```
+
+### After rotating a device token
+
+Update `DEVICE_TOKEN` in `.env`, then restart Edge.service:
+
+```bash
+sudo systemctl restart Edge.service
+```
+
+Re-provisioning is automatic on the first cloud flush.
 
 ---
 
 ## Local Development Setup
 
-To run and evaluate the Edge client daemon on your workstation:
-1.  Verify **Python 3.10+** is installed.
-2.  Initialize virtual environment:
-    ```bash
-    python -m venv venv && source venv/bin/activate
-    ```
-3.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  Configure local environment variables:
-    ```bash
-    cp .env.example .env
-    ```
-5.  Start the script:
-    ```bash
-    python src/main.py
-    ```
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python src/main.py
+```
 
 > [!NOTE]
-> When running locally without SocketCAN filters or a physical vehicle connection, the script will simulate or gracefully log unreachable ECU errors.
+> When running locally without a physical CAN interface, the script gracefully logs ECU unreachable errors. Use the loopback test scripts in `Testing/` to validate the CAN protocol layer.
 
 ---
 
 ## Installation & Validation
 
-*   Refer to [INSTALL.md](file:///home/bodz/OBD-Cortex/Edge/INSTALL.md) for step-by-step physical deployment instructions.
-*   Refer to [Testing/README.md](file:///home/bodz/OBD-Cortex/Edge/Testing/README.md) to perform loopback mock CAN bus verification.
-
+- Refer to [INSTALL.md](file:///home/bodz/OBD-Cortex/Edge/INSTALL.md) for step-by-step physical deployment instructions.
+- Refer to [Testing/README.md](file:///home/bodz/OBD-Cortex/Edge/Testing/README.md) for loopback mock CAN bus verification.

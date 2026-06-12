@@ -1,0 +1,33 @@
+[Unit]
+Description=OBD-Cortex CAN Bus Monitor (Vehicle Data Collector)
+Documentation=https://github.com/OBD-Cortex/Edge
+# Only requires the network stack for NTP; no cloud dependency
+After=network.target
+# Ensure this unit is active before Edge.service attempts to open the bus
+Before=Edge.service
+
+[Service]
+# Change 'pi' to your actual Raspberry Pi username if different
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Edge
+
+# Bring up the MCP2515 CAN interface at 500 kbps before starting Python.
+# The interface is torn down cleanly on stop via ExecStopPost.
+ExecStartPre=/sbin/ip link set can0 up type can bitrate 500000
+ExecStopPost=/sbin/ip link set can0 down
+
+Environment="PATH=/home/pi/Edge/venv/bin"
+ExecStart=/home/pi/Edge/venv/bin/python src/vehicle_monitor.py
+
+# Restart on any non-zero exit; give the CAN hardware 5s to settle
+Restart=always
+RestartSec=5
+
+# Route stdout/stderr into journald for capture via:
+#   journalctl -u CanMonitor.service -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
