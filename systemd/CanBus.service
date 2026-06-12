@@ -1,0 +1,19 @@
+[Unit]
+Description=OBD-Cortex CAN Bus Interface (can0 at 500 kbps)
+Documentation=https://github.com/OBD-Cortex/Edge
+After=network.target
+# Declare before any service that needs the CAN bus
+Before=Edge.service VehicleMonitor.service
+
+[Service]
+# Type=oneshot: ip link set exits immediately after bringing the interface up.
+# RemainAfterExit=yes: the unit stays in the 'active' state so dependants
+# (Edge.service, VehicleMonitor.service) see it as running.
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/sbin/ip link set can0 up type can bitrate 500000
+ExecStop=/sbin/ip link set can0 down
+
+[Install]
+WantedBy=multi-user.target

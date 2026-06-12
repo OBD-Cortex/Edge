@@ -1,0 +1,22 @@
+[Unit]
+Description=OBD-Cortex Vehicle Data Monitor (Live PID Collector)
+Documentation=https://github.com/OBD-Cortex/Edge
+After=CanBus.service
+Requires=CanBus.service
+
+[Service]
+User=obdpi
+Group=obdpi
+WorkingDirectory=/home/obdpi/Edge
+Environment="PATH=/home/obdpi/Edge/venv/bin"
+ExecStart=/home/obdpi/Edge/venv/bin/python src/vehicle_monitor.py
+
+# Restart on crash; give the CAN stack 5s to settle before retry
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
