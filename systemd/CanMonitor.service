@@ -8,17 +8,18 @@ Before=Edge.service
 
 [Service]
 # Change 'pi' to your actual Raspberry Pi username if different
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/Edge
+User=obdpi
+Group=obdpi
+WorkingDirectory=/home/obdpi/Edge
 
 # Bring up the MCP2515 CAN interface at 500 kbps before starting Python.
-# The interface is torn down cleanly on stop via ExecStopPost.
-ExecStartPre=/sbin/ip link set can0 up type can bitrate 500000
-ExecStopPost=/sbin/ip link set can0 down
+# The '+' prefix grants root privileges for this exec line only; the main
+# ExecStart process still runs as User=pi (least-privilege principle).
+ExecStartPre=+/sbin/ip link set can0 up type can bitrate 500000
+ExecStopPost=+/sbin/ip link set can0 down
 
-Environment="PATH=/home/pi/Edge/venv/bin"
-ExecStart=/home/pi/Edge/venv/bin/python src/vehicle_monitor.py
+Environment="PATH=/home/obdpi/Edge/venv/bin"
+ExecStart=/home/obdpi/Edge/venv/bin/python src/vehicle_monitor.py
 
 # Restart on any non-zero exit; give the CAN hardware 5s to settle
 Restart=always

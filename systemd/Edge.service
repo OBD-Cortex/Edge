@@ -9,13 +9,13 @@ Requires=CanMonitor.service
 
 [Service]
 # Change 'pi' to your actual Raspberry Pi username if different
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/Edge
-Environment="PATH=/home/pi/Edge/venv/bin"
+User=obdpi
+Group=obdpi
+WorkingDirectory=/home/obdpi/Edge
+Environment="PATH=/home/obdpi/Edge/venv/bin"
 
 # The core daemon execution
-ExecStart=/home/pi/Edge/venv/bin/python src/main.py
+ExecStart=/home/obdpi/Edge/venv/bin/python src/main.py
 
 # Auto-restart if the script crashes (e.g. transient cloud outage)
 Restart=always

@@ -60,7 +60,7 @@ Edge.service                (depends on CanMonitor -- starts after)
 ### 1. Install dependencies
 
 ```bash
-cd /home/pi/Edge
+cd /home/obdpi/Edge
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -93,7 +93,7 @@ journalctl -u CanMonitor.service -f
 journalctl -u Edge.service -f
 
 # Structured JSON data file
-tail -f /home/pi/Edge/logs/vehicle_data.log
+tail -f /home/obdpi/Edge/logs/vehicle_data.log
 ```
 
 ### After rotating a device token
