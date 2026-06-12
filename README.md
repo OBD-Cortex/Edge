@@ -8,7 +8,7 @@ The **Edge Device Controller** is a lightweight Python daemon designed to run pe
 
 1.  **CAN-Bus Telemetry Acquisition:** Interfaces directly with physical OBD-II hardware via the `python-can` library to query and assemble real-time vehicle RPM, Speed, and Diagnostic Trouble Codes (DTCs).
 2.  **Offline Resilience:** Uses a local SQLite caching layer (`src/core/telemetry_buffer.py`). If the vehicle drives through cellular dead zones, telemetry snapshots (up to 100 per batch) are safely buffered on the SD card and automatically flushed once connectivity to the gateway is restored.
-3.  **Cryptographic Signatures:** Payloads are signed using a local symmetric device key (`src/core/crypto.py`) concatenated with a UTC ISO-8601 timestamp. The `Edge_Service` verifies signatures to prevent telemetry spoofing.
+3.  **Cryptographic Signatures:** Payloads are signed using a local symmetric device key (`src/core/crypto.py`) concatenated with a UTC ISO-8601 timestamp. The `Edge-Service` verifies signatures to prevent telemetry spoofing.
 4.  **No Version Pins:** To ensure you always run the latest stable libraries in production, `requirements.txt` does not restrict package versions. They will resolve to the latest stable packages upon deployment.
 
 ---

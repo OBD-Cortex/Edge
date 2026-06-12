@@ -33,7 +33,7 @@ To enable cryptographic signature generation:
 Create a `.env` file in the root directory:
 
 ```env
-# The endpoint for your central Edge_Service gateway
+# The endpoint for your central Edge-Service gateway
 EDGE_SERVICE_URL=https://edge.yourdomain.com
 
 # Device token generated via the Admin Dashboard
