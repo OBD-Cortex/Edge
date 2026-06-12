@@ -3,7 +3,8 @@ import sqlite3
 import datetime
 import httpx
 import logging
-from core.config import BASE_DIR, EDGE_SERVICE_URL, DEVICE_ID
+from core.config import BASE_DIR
+from core import config
 from core.crypto import sign_payload
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ ARCHIVE_DIR = BASE_DIR / "archive"
 def init_buffer():
     """Initializes the SQLite database schema if it does not exist."""
     try:
-        with sqlite3.connect(SQLITE_DB_PATH) as conn:
+        with sqlite3.connect(SQLITE_DB_PATH, timeout=1.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS buffered_telemetry (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +33,7 @@ def save_to_buffer(telemetry_dict):
         payload_str = json.dumps(telemetry_dict)
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         
-        with sqlite3.connect(SQLITE_DB_PATH) as conn:
+        with sqlite3.connect(SQLITE_DB_PATH, timeout=1.0) as conn:
             conn.execute(
                 "INSERT INTO buffered_telemetry (payload, created_at) VALUES (?, ?)",
                 (payload_str, timestamp)
@@ -48,7 +49,7 @@ def save_to_buffer(telemetry_dict):
 def get_buffered_entries():
     """Retrieves up to 100 buffered telemetry snapshots. Returns [(id, payload_dict)]."""
     try:
-        with sqlite3.connect(SQLITE_DB_PATH) as conn:
+        with sqlite3.connect(SQLITE_DB_PATH, timeout=1.0) as conn:
             rows = conn.execute("SELECT id, payload FROM buffered_telemetry ORDER BY id ASC LIMIT 100").fetchall()
             return [(row[0], json.loads(row[1])) for row in rows]
     except Exception as e:
@@ -66,7 +67,7 @@ def remove_entries(ids):
     if not ids:
         return
     try:
-        with sqlite3.connect(SQLITE_DB_PATH) as conn:
+        with sqlite3.connect(SQLITE_DB_PATH, timeout=1.0) as conn:
             placeholders = ",".join("?" for _ in ids)
             conn.execute(f"DELETE FROM buffered_telemetry WHERE id IN ({placeholders})", tuple(ids))
         logger.info(f"Cleared {len(ids)} uploaded entries from buffer.")
@@ -77,7 +78,7 @@ def remove_entries(ids):
 
 def flush_to_cloud():
     """Tries to upload all buffered entries to the Central RAG API."""
-    if not EDGE_SERVICE_URL or DEVICE_ID is None:
+    if not config.EDGE_SERVICE_URL or config.DEVICE_ID is None:
         logger.warning("EDGE_SERVICE_URL missing or Device not provisioned. Skipping flush.")
         return
         
@@ -96,13 +97,13 @@ def flush_to_cloud():
         signature_hex, timestamp_str = sign_payload(payload_bytes)
         
         headers = {
-            "X-Device-ID": str(DEVICE_ID),
+            "X-Device-ID": str(config.DEVICE_ID),
             "X-Signature": signature_hex,
             "X-Timestamp": timestamp_str,
             "Content-Type": "application/json"
         }
         
-        res = httpx.post(f"{EDGE_SERVICE_URL}/api/telemetry", content=payload_bytes, headers=headers, timeout=10)
+        res = httpx.post(f"{config.EDGE_SERVICE_URL}/api/telemetry", content=payload_bytes, headers=headers, timeout=10)
         
         if res.status_code == 200:
             remove_entries(uploaded_ids)

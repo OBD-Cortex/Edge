@@ -50,6 +50,9 @@ def send_obd_request(bus, arb_id, data):
     """
     if not bus:
         return False
+    if len(data) > 8:
+        logger.error(f"[CAN Bus] Attempted to send {len(data)}-byte frame; max is 8.")
+        return False
     try:
         # ISO-TP padding dynamically read from .env configuration
         padded_data = list(data) + [CAN_PADDING_BYTE] * (8 - len(data))
@@ -76,6 +79,7 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
     ecu_payloads = {}   # ecu_id -> bytearray of assembled payload
     ecu_expected_len = {} # ecu_id -> total expected payload length
     ecu_flow_control_sent = {} # ecu_id -> bool
+    ecu_seq_counters = {} # ecu_id -> expected sequence number
 
     start_time = time.time()
 
@@ -92,7 +96,7 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
             remaining = timeout - elapsed
             msg = bus.recv(timeout=remaining)
             if not msg:
-                break
+                continue
 
             ecu_id = msg.arbitration_id
             if ecu_id not in expected_ids:
@@ -121,13 +125,20 @@ def recv_isotp_messages(bus, expected_ids, timeout=1.0):
                     # Send Flow Control to the physical request ID (response ID - 8)
                     if not ecu_flow_control_sent.get(ecu_id):
                         fc_id = ecu_id - 8
-                        # Send FC: Clear to Send (0), Block Size (0), STmin (0), padded with 0xAA
+                        # Send FC: Clear to Send (0), Block Size (0), STmin (0), dynamically padded in send_obd_request
                         send_obd_request(bus, fc_id, [0x30, 0x00, 0x00])
                         ecu_flow_control_sent[ecu_id] = True
+                        ecu_seq_counters[ecu_id] = 1 # Start sequence counter for CFs
 
             elif pci_type == 0x20:
                 # Consecutive Frame (CF)
                 if ecu_id in ecu_payloads:
+                    seq_num = data[0] & 0x0F
+                    expected_seq = ecu_seq_counters.get(ecu_id, 1) & 0x0F
+                    if seq_num != expected_seq:
+                        logger.warning(f"[CAN Bus] Sequence mismatch for ECU 0x{ecu_id:03X}: "
+                                       f"expected 0x{expected_seq:X}, got 0x{seq_num:X}")
+                    ecu_seq_counters[ecu_id] = seq_num + 1
                     ecu_payloads[ecu_id].extend(data[1:])
 
     except Exception as e:

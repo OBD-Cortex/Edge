@@ -12,14 +12,8 @@ SRC_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC_ROOT))
 
 import can
-from core.can_interface import init_can_bus, shutdown_can_bus
+from core.can_interface import init_can_bus, shutdown_can_bus, clear_buffer
 from core.config import CAN_PADDING_BYTE
-
-def clear_buffer(bus):
-    """Flushes any stale packets."""
-    while True:
-        if bus.recv(timeout=0.0) is None:
-            break
 
 def test_raw_ping(bus):
     """Sends a raw Service 01 PID 00 ping and waits for any 0x7E8 response."""

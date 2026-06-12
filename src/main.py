@@ -111,6 +111,15 @@ def main():
             current_time = time.time()
             raw_scan = run_full_scan(bus)
 
+            if raw_scan == {"mil_active": False, "confirmed_dtcs": [], "pending_dtcs": []}:
+                if not ping_ecu(bus):
+                    logger.warning("ECU unreachable -- attempting CAN bus reconnection...")
+                    shutdown_can_bus(bus)
+                    try:
+                        bus = init_can_bus()
+                    except RuntimeError:
+                        logger.error("CAN bus reconnection failed.")
+
             heartbeat_due = (current_time - last_heartbeat_time >= HEARTBEAT_INTERVAL)
             state_changed = has_state_changed(raw_scan, last_scan_state)
 
