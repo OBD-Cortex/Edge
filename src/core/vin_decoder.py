@@ -228,9 +228,128 @@ def decode_vin(vin: str) -> dict:
     }
     region = region_map.get(vin[0], "Unknown")
 
+    # Local model resolution table for testing/development
+    model_table = {
+        # Tesla
+        "5YJ3": "Model 3",
+        "5YJS": "Model S",
+        "5YJX": "Model X",
+        "5YJY": "Model Y",
+        "7SAY": "Model Y",
+        "7G2C": "Cybertruck",
+
+        # General Motors (Chevrolet / Cadillac / Buick)
+        "1G1FY6": "Bolt EV/EUV",
+        "1G11Y": "Corvette",
+        "1G1RC": "Volt",
+        "1G6": "Cadillac CTS/ATS",
+        "1GY": "Cadillac Escalade",
+        "LSY": "Buick Envision",
+        "LSG": "Chevrolet Equinox",
+
+        # BMW / Mini
+        "WBA8E1C5": "330e",
+        "WBA3R1C": "4 Series",
+        "WBA5A": "5 Series",
+        "WBA1A": "1 Series",
+        "WBY1Z": "i3",
+        "WBS": "M Series",
+
+        # Mercedes-Benz
+        "WDD205": "C-Class",
+        "WDD213": "E-Class",
+        "WDD222": "S-Class",
+        "WDC166": "GLE-Class",
+
+        # Audi / Volkswagen
+        "WAU8W": "A4",
+        "WAU4G": "A6",
+        "WAU1V": "Q5",
+        "1VW": "Jetta/Passat",
+        "WVW": "Golf/Passat",
+
+        # Porsche
+        "WP0AB2": "911 Carrera",
+        "WP1AA2": "Cayenne",
+
+        # Toyota / Lexus
+        "JT2KB20U": "Prius",
+        "4T1BF1FK": "Camry",
+        "5TDKR4FH": "Highlander",
+        "JT32U": "RAV4",
+
+        # Honda / Acura
+        "1HGCP2": "Accord",
+        "1HGFC2": "Civic",
+        "2HGFC2": "Civic (Canada)",
+        "JHMRE4": "CR-V",
+
+        # Ford / Lincoln
+        "1FTFW1EF": "F-150",
+        "1FA6P8CF": "Mustang",
+        "1FM5K8": "Explorer",
+        "1FMCU0": "Escape",
+
+        # Nissan / Infiniti
+        "1N4AL3AP": "Altima",
+        "JN1AZ4EH": "370Z",
+        "1N4AZ1CP": "Leaf",
+
+        # Hyundai / Kia
+        "KMHBD4AE": "Elantra",
+        "KMHD34LF": "Sonata",
+        "KNAFX415": "Sportage",
+        "KNAGT4A3": "Optima",
+
+        # Volvo
+        "YV1A": "S60/V60",
+        "YV4A": "XC90/XC60",
+
+        # Land Rover / Jaguar
+        "SALWR2V": "Range Rover",
+        "SALWS2V": "Range Rover Sport",
+
+        # Subaru
+        "JF1SJ": "Forester",
+        "JF1SH": "Forester",
+        "4S4BS": "Outback",
+
+        # Jeep / Dodge / Fiat
+        "1C4HJ": "Wrangler",
+        "1C4RJ": "Grand Cherokee",
+        "1C6": "RAM 1500",
+        "3C6": "RAM 2500/3500",
+        "ZFA150": "Fiat 500",
+
+        # Mazda / Mitsubishi / Suzuki
+        "JM1BM": "Mazda 3",
+        "JM1KF": "Mazda CX-5",
+        "JA4JW": "Outlander",
+        "JS1ZC": "Swift",
+
+        # BYD / Geely
+        "LC0": "BYD Dolphin/Atto 3",
+        "LGX": "BYD Atto 3",
+        "LB3G": "Geely Coolray",
+
+        # Renault / Peugeot
+        "VF15": "Renault Clio",
+        "VF3U": "Peugeot 208",
+
+        # Wuling / SAIC
+        "LZWADAGA2": "Captiva",
+        "LZWADAGA5": "Hongguang",
+    }
+    model = "Unknown"
+    for prefix, model_name in model_table.items():
+        if vin.startswith(prefix):
+            model = model_name
+            break
+
     return {
         "wmi": wmi,
         "brand": brand,
+        "model": model,
         "year": year,
         "region": region,
     }

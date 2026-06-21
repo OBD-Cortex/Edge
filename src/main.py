@@ -39,9 +39,10 @@ def do_provision(vin: str, vin_info: dict):
         raise RuntimeError("DEVICE_TOKEN missing in .env. Cannot provision.")
 
     brand = vin_info.get("brand", "Unknown")
+    model = vin_info.get("model", "Unknown")
     year  = str(vin_info.get("year", "Unknown"))
 
-    provision_device(vin, brand, "Unknown", year)
+    provision_device(vin, brand, model, year)
 
 
 def build_telemetry_document(vin: str, vin_info: dict, raw_scan: dict) -> dict:

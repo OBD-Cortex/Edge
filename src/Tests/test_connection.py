@@ -94,7 +94,7 @@ def main():
     year = str(vin_data.get("year", 0))
     if year == "0":
         year = "Unknown"
-    model = "Unknown"  # Local decoder provides region/WMI, but not specific model names
+    model = vin_data.get("model", "Unknown")
     print(f"    [✓] Decoded Vehicle parameters:")
     print(f"        Brand: {brand}")
     print(f"        Model: {model}")
