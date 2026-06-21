@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 import httpx
 
-# Dynamically calculate the EDGE_ROOT based on this script's location
+# Dynamically find the root directory of the Edge project
 EDGE_ROOT = Path(__file__).resolve().parent
-if EDGE_ROOT.name == "Testing":
+while EDGE_ROOT.name and not (EDGE_ROOT / "src").is_dir():
     EDGE_ROOT = EDGE_ROOT.parent
 
 # Add the 'src' directory to the python path so imports work

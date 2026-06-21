@@ -7,9 +7,13 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Dynamically find the root directory of the Edge project
+EDGE_ROOT = Path(__file__).resolve().parent
+while EDGE_ROOT.name and not (EDGE_ROOT / "src").is_dir():
+    EDGE_ROOT = EDGE_ROOT.parent
+
 # Add src to python path so imports work perfectly regardless of where you run it from
-SRC_ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(SRC_ROOT))
+sys.path.insert(0, str(EDGE_ROOT / "src"))
 
 from core.can_interface import init_can_bus, shutdown_can_bus
 from services.obd_scanner import ping_ecu, read_vin, run_full_scan
