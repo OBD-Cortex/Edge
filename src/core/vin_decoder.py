@@ -201,7 +201,7 @@ def decode_vin(vin: str) -> dict:
     vin = vin.strip().upper()
 
     if len(vin) != 17:
-        return {"wmi": "?", "brand": "Unknown", "year": 0, "region": "Unknown"}
+        return {"wmi": "?", "brand": "Unknown", "model": "Unknown", "year": 0, "region": "Unknown"}
 
     wmi = vin[:3]
     brand = decode_wmi(vin)
@@ -231,119 +231,123 @@ def decode_vin(vin: str) -> dict:
     # Local model resolution table for testing/development
     model_table = {
         # Tesla
-        "5YJ3": "Model 3",
-        "5YJS": "Model S",
-        "5YJX": "Model X",
-        "5YJY": "Model Y",
-        "7SAY": "Model Y",
-        "7G2C": "Cybertruck",
+        "5YJ3": ("Tesla", "Model 3"),
+        "5YJS": ("Tesla", "Model S"),
+        "5YJX": ("Tesla", "Model X"),
+        "5YJY": ("Tesla", "Model Y"),
+        "7SAY": ("Tesla", "Model Y"),
+        "7G2C": ("Tesla", "Cybertruck"),
 
         # General Motors (Chevrolet / Cadillac / Buick)
-        "1G1FY6": "Bolt EV/EUV",
-        "1G11Y": "Corvette",
-        "1G1RC": "Volt",
-        "1G6": "Cadillac CTS/ATS",
-        "1GY": "Cadillac Escalade",
-        "LSY": "Buick Envision",
-        "LSG": "Chevrolet Equinox",
+        "1G1FY6": ("Chevrolet", "Bolt EV/EUV"),
+        "1G11Y": ("Chevrolet", "Corvette"),
+        "1G1RC": ("Chevrolet", "Volt"),
+        "1G6": ("Cadillac", "CTS/ATS"),
+        "1GY": ("Cadillac", "Escalade"),
+        "LSY": ("Buick", "Envision"),
+        "LSG": ("Chevrolet", "Equinox"),
 
         # BMW / Mini
-        "WBA8E1C5": "330e",
-        "WBA3R1C": "4 Series",
-        "WBA5A": "5 Series",
-        "WBA1A": "1 Series",
-        "WBY1Z": "i3",
-        "WBS": "M Series",
+        "WBA8E1C5": ("BMW", "330e"),
+        "WBA3R1C": ("BMW", "4 Series"),
+        "WBA5A": ("BMW", "5 Series"),
+        "WBA1A": ("BMW", "1 Series"),
+        "WBY1Z": ("BMW", "i3"),
+        "WBS": ("BMW M", "Performance Model"),
 
         # Mercedes-Benz
-        "WDD205": "C-Class",
-        "WDD213": "E-Class",
-        "WDD222": "S-Class",
-        "WDC166": "GLE-Class",
+        "WDD205": ("Mercedes-Benz", "C-Class"),
+        "WDD213": ("Mercedes-Benz", "E-Class"),
+        "WDD222": ("Mercedes-Benz", "S-Class"),
+        "WDC166": ("Mercedes-Benz", "GLE-Class"),
 
         # Audi / Volkswagen
-        "WAU8W": "A4",
-        "WAU4G": "A6",
-        "WAU1V": "Q5",
-        "1VW": "Jetta/Passat",
-        "WVW": "Golf/Passat",
+        "WAU8W": ("Audi", "A4"),
+        "WAU4G": ("Audi", "A6"),
+        "WAU1V": ("Audi", "Q5"),
+        "1VW": ("Volkswagen", "Jetta/Passat"),
+        "WVW": ("Volkswagen", "Golf/Passat"),
 
         # Porsche
-        "WP0AB2": "911 Carrera",
-        "WP1AA2": "Cayenne",
+        "WP0AB2": ("Porsche", "911 Carrera"),
+        "WP1AA2": ("Porsche", "Cayenne"),
 
         # Toyota / Lexus
-        "JT2KB20U": "Prius",
-        "4T1BF1FK": "Camry",
-        "5TDKR4FH": "Highlander",
-        "JT32U": "RAV4",
+        "JT2KB20U": ("Toyota", "Prius"),
+        "4T1BF1FK": ("Toyota", "Camry"),
+        "5TDKR4FH": ("Toyota", "Highlander"),
+        "JT32U": ("Toyota", "RAV4"),
 
         # Honda / Acura
-        "1HGCP2": "Accord",
-        "1HGFC2": "Civic",
-        "2HGFC2": "Civic (Canada)",
-        "JHMRE4": "CR-V",
+        "1HGCP2": ("Honda", "Accord"),
+        "1HGFC2": ("Honda", "Civic"),
+        "2HGFC2": ("Honda", "Civic (Canada)"),
+        "JHMRE4": ("Honda", "CR-V"),
 
         # Ford / Lincoln
-        "1FTFW1EF": "F-150",
-        "1FA6P8CF": "Mustang",
-        "1FM5K8": "Explorer",
-        "1FMCU0": "Escape",
+        "1FTFW1EF": ("Ford", "F-150"),
+        "1FA6P8CF": ("Ford", "Mustang"),
+        "1FM5K8": ("Ford", "Explorer"),
+        "1FMCU0": ("Ford", "Escape"),
 
         # Nissan / Infiniti
-        "1N4AL3AP": "Altima",
-        "JN1AZ4EH": "370Z",
-        "1N4AZ1CP": "Leaf",
+        "1N4AL3AP": ("Nissan", "Altima"),
+        "JN1AZ4EH": ("Nissan", "370Z"),
+        "1N4AZ1CP": ("Nissan", "Leaf"),
 
         # Hyundai / Kia
-        "KMHBD4AE": "Elantra",
-        "KMHD34LF": "Sonata",
-        "KNAFX415": "Sportage",
-        "KNAGT4A3": "Optima",
+        "KMHBD4AE": ("Hyundai", "Elantra"),
+        "KMHD34LF": ("Hyundai", "Sonata"),
+        "KNAFX415": ("Kia", "Sportage"),
+        "KNAGT4A3": ("Kia", "Optima"),
 
         # Volvo
-        "YV1A": "S60/V60",
-        "YV4A": "XC90/XC60",
+        "YV1A": ("Volvo", "S60/V60"),
+        "YV4A": ("Volvo", "XC90/XC60"),
 
         # Land Rover / Jaguar
-        "SALWR2V": "Range Rover",
-        "SALWS2V": "Range Rover Sport",
+        "SALWR2V": ("Land Rover", "Range Rover"),
+        "SALWS2V": ("Land Rover", "Range Rover Sport"),
 
         # Subaru
-        "JF1SJ": "Forester",
-        "JF1SH": "Forester",
-        "4S4BS": "Outback",
+        "JF1SJ": ("Subaru", "Forester"),
+        "JF1SH": ("Subaru", "Forester"),
+        "4S4BS": ("Subaru", "Outback"),
 
         # Jeep / Dodge / Fiat
-        "1C4HJ": "Wrangler",
-        "1C4RJ": "Grand Cherokee",
-        "1C6": "RAM 1500",
-        "3C6": "RAM 2500/3500",
-        "ZFA150": "Fiat 500",
+        "1C4HJ": ("Jeep", "Wrangler"),
+        "1C4RJ": ("Jeep", "Grand Cherokee"),
+        "1C6": ("RAM", "1500"),
+        "3C6": ("RAM", "2500/3500"),
+        "ZFA150": ("Fiat", "500"),
 
         # Mazda / Mitsubishi / Suzuki
-        "JM1BM": "Mazda 3",
-        "JM1KF": "Mazda CX-5",
-        "JA4JW": "Outlander",
-        "JS1ZC": "Swift",
+        "JM1BM": ("Mazda", "Mazda 3"),
+        "JM1KF": ("Mazda", "Mazda CX-5"),
+        "JA4JW": ("Mitsubishi", "Outlander"),
+        "JS1ZC": ("Suzuki", "Swift"),
 
         # BYD / Geely
-        "LC0": "BYD Dolphin/Atto 3",
-        "LGX": "BYD Atto 3",
-        "LB3G": "Geely Coolray",
+        "LC0": ("BYD", "Dolphin/Atto 3"),
+        "LGX": ("BYD", "Atto 3"),
+        "LB3G": ("Geely", "Coolray"),
 
         # Renault / Peugeot
-        "VF15": "Renault Clio",
-        "VF3U": "Peugeot 208",
+        "VF15": ("Renault", "Renault Clio"),
+        "VF3U": ("Peugeot", "Peugeot 208"),
 
-        # Wuling / SAIC
-        "LZWADAGA2": "Captiva",
-        "LZWADAGA5": "Hongguang",
+        # Wuling / SAIC / Rebadges
+        "LZWADAGA2": ("Chevrolet", "New Optra"),
+        "LZWADAGA5": ("Wuling", "Hongguang"),
     }
     model = "Unknown"
-    for prefix, model_name in model_table.items():
+    for prefix, value in model_table.items():
         if vin.startswith(prefix):
-            model = model_name
+            if isinstance(value, tuple):
+                brand = value[0]
+                model = value[1]
+            else:
+                model = value
             break
 
     return {
