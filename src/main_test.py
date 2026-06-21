@@ -46,7 +46,27 @@ def print_table(title, headers, rows):
     print("-" * (sum(widths) + 3 * (len(headers) - 1)))
 
 
-def test_core_metrics():
+def get_vehicle_vin():
+    """Tries to connect to the CAN bus and read the vehicle's real VIN. Exits if unsuccessful."""
+    print("[*] Detecting vehicle VIN via CAN bus...")
+    bus = None
+    try:
+        bus = init_can_bus()
+        if ping_ecu(bus):
+            vin = read_vin(bus)
+            print(f"    [✓] Real vehicle VIN detected: {vin}")
+            return vin
+    except Exception as e:
+        print(f"    [✗] Error: Failed to retrieve vehicle VIN from the CAN bus: {e}")
+        sys.exit(1)
+    finally:
+        if bus:
+            shutdown_can_bus(bus)
+    print("    [✗] Error: Vehicle ECU unresponsive. Cannot retrieve VIN.")
+    sys.exit(1)
+
+
+def test_core_metrics(vin: str):
     print("\n[*] Initializing Core Diagnostics and Latency Evaluation...")
     
     # 1. ECU Connectivity Test
@@ -68,14 +88,10 @@ def test_core_metrics():
     except Exception as e:
         ecu_status = "Interface Not Found"
     
-    # Graceful fallback for ECU Connectivity
+    # Ensure real ECU connectivity
     if ecu_status != "Connected":
-        ecu_mode = "Simulated Fallback"
-        ecu_latency_ms = random.uniform(20.0, 45.0)
-        ecu_status = "Connected (Simulated)"
-        if bus:
-            shutdown_can_bus(bus)
-            bus = None
+        print(f"    [✗] Error: Real ECU connection failed ({ecu_status}). Aborting test suite.")
+        sys.exit(1)
 
     print(f"    Status: {ecu_status} | Latency: {ecu_latency_ms:.2f} ms ({ecu_mode})")
 
@@ -94,14 +110,14 @@ def test_core_metrics():
             dtc_status = "Success"
             dtc_count = len(dtcs)
         except Exception as e:
-            dtc_status = "Query Error"
+            dtc_status = f"Query Error ({e})"
     
-    # Graceful fallback for DTC Latency
+    # Ensure real DTC query success
     if dtc_status != "Success":
-        dtc_mode = "Simulated Fallback"
-        dtc_latency_ms = random.uniform(40.0, 80.0)
-        dtc_status = "Success (Simulated)"
-        dtc_count = random.randint(0, 3)
+        print(f"    [✗] Error: Real DTC query failed ({dtc_status}). Aborting test suite.")
+        if bus:
+            shutdown_can_bus(bus)
+        sys.exit(1)
         
     print(f"    Status: {dtc_status} | Latency: {dtc_latency_ms:.2f} ms ({dtc_mode}) | Stored DTCs: {dtc_count}")
 
@@ -127,15 +143,14 @@ def test_core_metrics():
             else:
                 cloud_status = f"HTTP {res.status_code}"
         except Exception as e:
-            cloud_status = "Unreachable"
+            cloud_status = f"Unreachable ({e})"
     else:
         cloud_status = "URL Not Configured"
 
-    # Graceful fallback for Cloud Connection
+    # Ensure real Cloud connection success
     if cloud_status != "Connected":
-        cloud_mode = "Simulated Fallback"
-        cloud_latency_ms = random.uniform(10.0, 30.0)
-        cloud_status = "Connected (Simulated)"
+        print(f"    [✗] Error: Cloud service health check failed ({cloud_status}). Aborting test suite.")
+        sys.exit(1)
 
     print(f"    Status: {cloud_status} | Latency: {cloud_latency_ms:.2f} ms ({cloud_mode})")
 
@@ -149,7 +164,8 @@ def test_core_metrics():
         try:
             init_buffer()
             test_snapshot = {
-                "vehicle_id": "TEST_VIN_PERF_123",
+                "vehicle_id": vin,
+                "is_test": True,
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "mil_active": False,
                 "dtc_count": dtc_count,
@@ -168,13 +184,22 @@ def test_core_metrics():
             else:
                 upload_status = f"Upload Error ({result})"
         except Exception as e:
-            upload_status = "Upload Failed"
+            upload_status = f"Upload Failed ({e})"
+        finally:
+            # Purge test entries immediately from SQLite buffer if upload failed or succeeded
+            try:
+                conn = sqlite3.connect(SQLITE_DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM buffered_telemetry WHERE payload LIKE '%\"is_test\": true%'")
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
             
-    # Graceful fallback for Device-to-Cloud Upload
+    # Ensure real Telemetry upload success
     if upload_status != "Success":
-        upload_mode = "Simulated Fallback"
-        upload_latency_ms = random.uniform(100.0, 250.0)
-        upload_status = "Success (Simulated)"
+        print(f"    [✗] Error: Device-to-cloud upload test failed ({upload_status}). Aborting test suite.")
+        sys.exit(1)
 
     print(f"    Status: {upload_status} | Latency: {upload_latency_ms:.2f} ms ({upload_mode})")
 
@@ -199,10 +224,8 @@ def test_can_latency():
         init_latency_ms = (time.time() - start_init) * 1000
         print(f"    [+] CAN Socket Initialization Latency: {init_latency_ms:.2f} ms")
     except Exception as e:
-        print(f"    [-] SocketCAN device 'can0' could not be initialized: {e}")
-        print("    [-] Falling back to SIMULATED CAN latency test.")
-        run_simulated_can_test()
-        return
+        print(f"    [✗] Error: SocketCAN device 'can0' could not be initialized: {e}")
+        sys.exit(1)
 
     try:
         # Check if connected to a real ECU
@@ -212,11 +235,9 @@ def test_can_latency():
         ping_latency_ms = (time.time() - start_ping) * 1000
 
         if not ecu_responsive:
-            print("    [-] Vehicle ECU unresponsive. Is the OBD-II cable connected and ignition ON?")
-            print("    [-] Falling back to SIMULATED CAN latency test.")
-            run_simulated_can_test()
+            print("    [✗] Error: Vehicle ECU unresponsive. Is the OBD-II cable connected and ignition ON?")
             shutdown_can_bus(bus)
-            return
+            sys.exit(1)
 
         print(f"    [+] ECU responds successfully (Ping Latency: {ping_latency_ms:.2f} ms)")
 
@@ -314,24 +335,7 @@ def test_can_latency():
     finally:
         shutdown_can_bus(bus)
 
-def run_simulated_can_test():
-    print("\n[*] Running Simulated CAN Bus Latency Test...")
-    print("    [!] Simulating standard OBD-II query delays over SocketCAN loopback interface.")
-    
-    headers = ["Query Type", "Simulated Latency (ms)", "Status"]
-    # Real-world OBD-II queries typically take between 15ms and 60ms depending on the ECU.
-    rows = [
-        ["ECU Ping (01 00)", "32.4", "Success (Simulated)"],
-        ["VIN Retrieval (09 02)", "128.6", "Success (Simulated)"],
-        ["Supported PIDs (01 00)", "42.1", "Success (Simulated)"],
-        ["PID Poll (Engine RPM)", "24.8", "Success (Simulated)"],
-        ["PID Poll (Vehicle Speed)", "23.5", "Success (Simulated)"],
-        ["PID Poll (Coolant Temp)", "26.1", "Success (Simulated)"],
-        ["PID Poll (Throttle Pos)", "25.0", "Success (Simulated)"]
-    ]
-    print_table("Simulated OBD-II CAN Latency Results", headers, rows)
-
-def test_sqlite_throughput():
+def test_sqlite_throughput(vin: str):
     print("\n[*] Running Offline SQLite Buffer I/O Throughput Test...")
     init_buffer()
     
@@ -340,7 +344,8 @@ def test_sqlite_throughput():
     snapshots = []
     for i in range(count):
         snapshots.append({
-            "vehicle_id": "TEST_VIN_PERF_123",
+            "vehicle_id": vin,
+            "is_test": True,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "mil_active": i % 10 == 0,
             "dtc_count": 0,
@@ -369,6 +374,11 @@ def test_sqlite_throughput():
     cursor.execute("SELECT id, payload FROM buffered_telemetry ORDER BY id ASC")
     records = cursor.fetchall()
     query_time_ms = (time.time() - start_query) * 1000
+
+    # Purge test entries immediately from SQLite buffer
+    print("[*] Cleaning up test records from local SQLite database...")
+    cursor.execute("DELETE FROM buffered_telemetry WHERE payload LIKE '%\"is_test\": true%'")
+    conn.commit()
     conn.close()
 
     headers = ["Metric", "Value"]
@@ -382,7 +392,7 @@ def test_sqlite_throughput():
     ]
     print_table("SQLite Database I/O Benchmarks", headers, rows)
 
-def test_cloud_sync_latency():
+def test_cloud_sync_latency(vin: str):
     print("\n[*] Running Cloud Sync Latency Test...")
     edge_service_url = os.getenv("EDGE_SERVICE_URL")
     if not edge_service_url:
@@ -392,7 +402,8 @@ def test_cloud_sync_latency():
     # Buffer a single record specifically for this test
     init_buffer()
     test_snapshot = {
-        "vehicle_id": "TEST_VIN_PERF_123",
+        "vehicle_id": vin,
+        "is_test": True,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "mil_active": False,
         "dtc_count": 0,
@@ -427,22 +438,35 @@ def test_cloud_sync_latency():
         print_table("Cloud Sync Telemetry Ingestion Metrics", headers, rows)
     except Exception as e:
         print(f"    [-] Cloud sync failed: {e}")
+    finally:
+        # Purge test entries immediately from SQLite buffer if upload failed
+        try:
+            conn = sqlite3.connect(SQLITE_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM buffered_telemetry WHERE payload LIKE '%\"is_test\": true%'")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
 def main():
     parser = argparse.ArgumentParser(description="OBD-Cortex Edge Performance Evaluation")
     parser.add_argument("--auto", choices=['core', 'can', 'sqlite', 'cloud', 'all'], help="Run specific test automatically without interactive menu")
     args = parser.parse_args()
 
+    # Detect the real vehicle's VIN at startup
+    vin = get_vehicle_vin()
+
     if args.auto:
-        if args.auto == 'core': test_core_metrics()
+        if args.auto == 'core': test_core_metrics(vin)
         elif args.auto == 'can': test_can_latency()
-        elif args.auto == 'sqlite': test_sqlite_throughput()
-        elif args.auto == 'cloud': test_cloud_sync_latency()
+        elif args.auto == 'sqlite': test_sqlite_throughput(vin)
+        elif args.auto == 'cloud': test_cloud_sync_latency(vin)
         elif args.auto == 'all':
-            test_core_metrics()
+            test_core_metrics(vin)
             test_can_latency()
-            test_sqlite_throughput()
-            test_cloud_sync_latency()
+            test_sqlite_throughput(vin)
+            test_cloud_sync_latency(vin)
         sys.exit(0)
 
     while True:
@@ -450,7 +474,7 @@ def main():
         print(" OBD-Cortex Edge Performance Evaluation Suite")
         print("=" * 50)
         print("1. Run Core Diagnostics & Latency Suite (ECU, DTC, Cloud, Upload)")
-        print("2. Test CAN Bus Latency (Live Vehicle or Simulated)")
+        print("2. Test CAN Bus Latency (Live Vehicle Only)")
         print("3. Test Offline SQLite Buffer I/O Throughput")
         print("4. Test Cloud Sync Latency (Edge-Service Ingest)")
         print("5. Run All Performance Evaluations")
@@ -459,18 +483,18 @@ def main():
         choice = input("Select an option (1-6): ").strip()
         
         if choice == '1':
-            test_core_metrics()
+            test_core_metrics(vin)
         elif choice == '2':
             test_can_latency()
         elif choice == '3':
-            test_sqlite_throughput()
+            test_sqlite_throughput(vin)
         elif choice == '4':
-            test_cloud_sync_latency()
+            test_cloud_sync_latency(vin)
         elif choice == '5':
-            test_core_metrics()
+            test_core_metrics(vin)
             test_can_latency()
-            test_sqlite_throughput()
-            test_cloud_sync_latency()
+            test_sqlite_throughput(vin)
+            test_cloud_sync_latency(vin)
         elif choice == '6':
             print("Exiting performance evaluation suite.")
             break
